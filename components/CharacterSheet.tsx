@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
-import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN } from '../constants';
+import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE } from '../constants';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -181,6 +181,7 @@ const SelectWithInfo: React.FC<{
 const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   const [activeTab, setActiveTab] = React.useState<TabType>('combat');
   const [showWeaponMenu, setShowWeaponMenu] = useState(false);
+  const [showEquipMenu, setShowEquipMenu] = useState(false);
 
   // Xác định Class hiện tại để lấy thông tin auto-lock
   const currentClassData = CLASSES_VN.find(c => c.value === character.className);
@@ -1061,7 +1062,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     {character.equipment.map((item, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <input
-                          className="bg-transparent text-gray-300 w-8 text-center border-b border-dragon-800 focus:border-dragon-gold outline-none"
+                          className="bg-transparent text-gray-300 w-8 text-center border-b border-dragon-800 focus:border-dragon-gold outline-none shrink-0"
                           type="number"
                           value={item.amount}
                           onChange={(e) => {
@@ -1070,22 +1071,62 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                           }}
                         />
                         <input
-                          className="flex-1 bg-transparent text-gray-300 border-b border-dragon-800 focus:border-dragon-gold outline-none"
+                          className="min-w-0 flex-1 bg-transparent text-gray-300 border-b border-dragon-800 focus:border-dragon-gold outline-none"
                           value={item.name}
                           onChange={(e) => {
                             const newEq = character.equipment.map((eq, idx) => idx === i ? { ...eq, name: e.target.value } : eq);
                             handleUpdate('equipment', newEq);
                           }}
                         />
-                        <button onClick={() => handleUpdate('equipment', character.equipment.filter((_, idx) => idx !== i))} className="text-red-900 hover:text-red-500"><Trash2 size={12} /></button>
+                        <button onClick={() => handleUpdate('equipment', character.equipment.filter((_, idx) => idx !== i))} className="text-red-800 hover:text-red-400 transition-colors shrink-0 ml-1"><Trash2 size={12} /></button>
                       </div>
                     ))}
+                  </div>
+                  <div className="relative mt-2">
                     <button
-                      onClick={() => handleUpdate('equipment', [...character.equipment, { name: "Vật phẩm mới", amount: 1 }])}
-                      className="text-xs text-gray-500 hover:text-dragon-gold flex items-center gap-1 mt-2"
+                      onClick={() => setShowEquipMenu(!showEquipMenu)}
+                      className="text-xs text-gray-500 hover:text-dragon-gold flex items-center gap-1"
                     >
                       <Plus size={12} /> Thêm vật phẩm
                     </button>
+                    {showEquipMenu && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowEquipMenu(false)}></div>
+                        <div className="absolute left-0 bottom-full mb-1 w-64 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-72 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
+                          {(['Potion', 'Gear', 'Tool', 'Ammo', 'Container', 'Camp'] as const).map(cat => {
+                            const items = EQUIPMENT_DATABASE.filter(e => e.category === cat);
+                            const catLabels: Record<string, string> = { Potion: '🧴 Thuốc & Bình', Gear: '⚙️ Dụng cụ phiêu lưu', Tool: '🛠 Bộ công cụ', Ammo: '🎯 Đạn dược', Container: '🎒 Túi & Hộp', Camp: '⛺ Cắm trại' };
+                            return (
+                              <div key={cat}>
+                                <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">{catLabels[cat]}</div>
+                                {items.map(eq => (
+                                  <button
+                                    key={eq.name}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50"
+                                    onClick={() => {
+                                      handleUpdate('equipment', [...character.equipment, { name: eq.label, amount: 1 }]);
+                                      setShowEquipMenu(false);
+                                    }}
+                                  >
+                                    <span className="font-medium">{eq.label}</span>
+                                    <span className="text-gray-600 ml-1.5">{eq.cost}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })}
+                          <button
+                            className="w-full text-left px-3 py-2 text-xs text-dragon-gold hover:bg-dragon-800 border-t border-dragon-700 font-bold"
+                            onClick={() => {
+                              handleUpdate('equipment', [...character.equipment, { name: 'Vật phẩm mới', amount: 1 }]);
+                              setShowEquipMenu(false);
+                            }}
+                          >
+                            Tùy chỉnh...
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
