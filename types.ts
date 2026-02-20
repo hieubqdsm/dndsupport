@@ -18,6 +18,37 @@ export interface Attack {
   type: string;
 }
 
+export type WeaponProperty = 'Finesse' | 'Light' | 'Heavy' | 'Versatile' | 'Thrown' | 'Ammunition' | 'Loading' | 'Two-Handed' | 'Reach';
+export type MasteryProperty = 'Cleave' | 'Graze' | 'Nick' | 'Push' | 'Sap' | 'Slow' | 'Topple' | 'Vex';
+export type DamageType = 'Bludgeoning' | 'Piercing' | 'Slashing';
+
+export interface WeaponData {
+  value: string;
+  label: string;
+  category: 'Simple' | 'Martial';
+  type: 'Melee' | 'Ranged';
+  damageDice: string;        // "1d8", "2d6", "1"
+  damageType: DamageType;
+  properties: WeaponProperty[];
+  mastery: MasteryProperty;
+  versatileDice?: string;    // "1d10" nếu Versatile
+  rangeNormal?: number;      // Tầm thường (feet)
+  rangeLong?: number;        // Tầm xa (feet)
+  weight: number;
+  cost: string;
+}
+
+export interface CharacterWeapon {
+  weaponId: string;          // Reference tới WeaponData.value
+  customName?: string;       // Tên custom (VD: "Kiếm lửa +1")
+  magicBonus: number;        // 0, +1, +2, +3
+  usesTwoHands: boolean;     // Đang cầm 2 tay? (cho Versatile)
+  // Computed fields (tính tự động)
+  attackBonus: number;
+  damageFormula: string;     // "1d8+3", "2d6+5", etc.
+  damageType: string;
+}
+
 export interface SpellLevel {
   level: number;
   slotsTotal: number;
@@ -83,10 +114,10 @@ export interface Character {
 
   inspiration: boolean;
   proficiencyBonus: number;
-  savingThrows: string[]; 
+  savingThrows: string[];
   skills: Skill[];
   passivePerception: number;
-  
+
   ac: number;
   initiative: number;
   speed: number;
@@ -94,7 +125,8 @@ export interface Character {
   hitDice: string;
   deathSaves: { success: number; failure: number };
 
-  attacks: Attack[];
+  attacks: Attack[];         // Giữ lại cho tùy chỉnh thủ công
+  weapons: CharacterWeapon[]; // Vũ khí auto-calculated
   otherProficiencies: string; // Ngôn ngữ & Công cụ
   equipment: { name: string; amount: number }[];
   money: { cp: number; sp: number; ep: number; gp: number; pp: number };

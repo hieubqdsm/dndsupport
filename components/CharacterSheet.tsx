@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Character, TabType, AbilityScore, DataOption } from '../types';
-import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, SUBCLASSES_VN, ARMOR_VN } from '../constants';
+import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
+import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN } from '../constants';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -70,6 +70,77 @@ const InfoTooltip: React.FC<{ content: string; alignRight?: boolean }> = ({ cont
       )}
     </>
   );
+};
+
+// Badge with Tooltip — hiển thị tooltip khi hover lên badge
+const BadgeTooltip: React.FC<{ tooltip: string; className: string; children: React.ReactNode }> = ({ tooltip, className, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLSpanElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const tooltipWidth = 280;
+
+    let top = rect.bottom + 6;
+    let left = rect.left;
+
+    if (rect.bottom > viewportHeight - 150) {
+      top = rect.top - 6;
+      setStyle({ top, left: Math.max(8, Math.min(left, viewportWidth - tooltipWidth - 8)), transform: 'translateY(-100%)' });
+    } else {
+      setStyle({ top, left: Math.max(8, Math.min(left, viewportWidth - tooltipWidth - 8)) });
+    }
+    setIsVisible(true);
+  };
+
+  return (
+    <>
+      <span
+        className={`${className} cursor-help`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setIsVisible(false)}
+        onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
+      >
+        {children}
+      </span>
+      {isVisible && createPortal(
+        <div
+          className="fixed z-[9999] bg-dragon-900 border border-dragon-gold/50 text-xs text-gray-200 p-2.5 rounded shadow-[0_4px_20px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-150 pointer-events-none"
+          style={{ ...style, width: 280 }}
+        >
+          {tooltip}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+// Tooltip descriptions cho Mastery Properties (PHB 2024)
+const MASTERY_INFO: Record<string, string> = {
+  'Cleave': 'Bổ chẻ: Khi trúng 1 kẻ, có thể tấn công thêm 1 kẻ khác trong 5ft (không cộng modifier vào damage).',
+  'Graze': 'Sượt qua: Nếu trượt đòn, vẫn gây damage = ability modifier.',
+  'Nick': 'Chém nhanh: Đòn tấn công thêm từ Light thành phần của Attack action (thay vì Bonus Action).',
+  'Push': 'Đẩy lùi: Khi trúng, đẩy mục tiêu lùi 10ft (Large hoặc nhỏ hơn).',
+  'Sap': 'Làm suy nhược: Khi trúng, mục tiêu chịu Disadvantage ở attack roll kế tiếp.',
+  'Slow': 'Làm chậm: Khi trúng + gây damage, giảm Speed mục tiêu 10ft (không cộng dồn).',
+  'Topple': 'Đánh ngã: Khi trúng, mục tiêu save CON (DC 8 + atk mod + prof) hoặc bị Prone.',
+  'Vex': 'Gây rối: Khi trúng + gây damage, bạn có Advantage cho attack kế tiếp vào mục tiêu đó.',
+};
+
+// Tooltip descriptions cho Weapon Properties (PHB 2024)
+const PROPERTY_INFO: Record<string, string> = {
+  'Finesse': 'Tinh tế: Dùng STR hoặc DEX cho attack + damage (chọn cái cao hơn).',
+  'Light': 'Nhẹ: Cho phép Two-Weapon Fighting — tấn công thêm bằng Bonus Action với vũ khí Light khác.',
+  'Heavy': 'Nặng: Disadvantage nếu STR < 13 (melee) hoặc DEX < 13 (ranged).',
+  'Versatile': 'Linh hoạt: Dùng 1 tay hoặc 2 tay. 2 tay = dice damage lớn hơn.',
+  'Thrown': 'Ném: Có thể ném để tấn công tầm xa. Vẫn dùng STR (trừ Finesse).',
+  'Ammunition': 'Đạn dược: Cần đạn để bắn. Tiêu hao 1/hit, thu hồi 50% sau trận.',
+  'Loading': 'Nạp đạn: Chỉ bắn được 1 đạn mỗi action/bonus action/reaction.',
+  'Two-Handed': 'Hai tay: Bắt buộc dùng 2 tay. Không thể cầm shield cùng lúc.',
+  'Reach': 'Tầm với: Tăng tầm với thêm 5ft (tổng 10ft). Ảnh hưởng Opportunity Attack.',
 };
 
 // Helper Component for Select with Tooltip
@@ -293,40 +364,79 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     handleUpdate('savingThrows', newSaves);
   };
 
-  const addAttack = (weaponName?: string) => {
-    let newAttack = { name: "Vũ khí mới", bonus: 0, damage: "1d6", type: "Sát thương" };
-
-    if (weaponName) {
-      const weapon = WEAPONS_VN.find(w => w.value === weaponName);
-      if (weapon) {
-        // Simple logic to guess bonus/damage based on weapon properties (Finesse, etc.)
-        // This is a simplification. Real D&D logic is complex (Str vs Dex).
-        // We will default to Strength for melee, Dex for ranged/finesse if Dex > Str.
-
-        const isFinesse = weapon.description.includes('Finesse');
-        const isRanged = weapon.description.includes('Range') || weapon.description.includes('Ammunition') || weapon.description.includes('Thrown');
-
-        let statMod = character.stats.str.modifier;
-        if (isRanged || (isFinesse && character.stats.dex.modifier > character.stats.str.modifier)) {
-          statMod = character.stats.dex.modifier;
-        }
-
-        const damageParts = weapon.description.split(' - ')[0].split(' '); // "1d8 Slashing" -> ["1d8", "Slashing"]
-        const damageDice = damageParts[0];
-        const damageType = damageParts[1] || "";
-
-        newAttack = {
-          name: weapon.label.split(' (')[0], // "Dagger (Dao găm)" -> "Dagger"
-          bonus: statMod + character.proficiencyBonus, // Assume proficient
-          damage: `${damageDice}${statMod >= 0 ? '+' + statMod : statMod}`,
-          type: damageType
-        };
-      }
-    }
-
-    const newAttacks = [...character.attacks, newAttack];
-    handleUpdate('attacks', newAttacks);
+  const addAttack = () => {
+    const newAttack = { name: "Tùy chỉnh", bonus: 0, damage: "1d6", type: "Sát thương" };
+    handleUpdate('attacks', [...character.attacks, newAttack]);
   };
+
+  // === Hệ thống vũ khí tự động ===
+
+  const getWeaponAbilityMod = (weaponData: typeof WEAPON_DATABASE[0]): number => {
+    const strMod = character.stats.str.modifier;
+    const dexMod = character.stats.dex.modifier;
+    const isFinesse = weaponData.properties.includes('Finesse');
+    const isRanged = weaponData.type === 'Ranged';
+
+    if (isFinesse) return Math.max(strMod, dexMod); // Chọn cái cao hơn
+    if (isRanged) return dexMod;
+    return strMod; // Melee mặc định dùng Str
+  };
+
+  const isWeaponProficient = (weaponData: typeof WEAPON_DATABASE[0]): boolean => {
+    // Mọi class đều thông thạo Simple weapons 
+    if (weaponData.category === 'Simple') return true;
+    // Martial: Fighter, Paladin, Ranger, Barbarian
+    const martialClasses = ['Fighter', 'Paladin', 'Ranger', 'Barbarian'];
+    if (martialClasses.includes(character.className)) return true;
+    return false;
+  };
+
+  const calculateWeapon = (cw: CharacterWeapon): CharacterWeapon => {
+    const weaponData = WEAPON_DATABASE.find(w => w.value === cw.weaponId);
+    if (!weaponData) return cw;
+
+    const abilityMod = getWeaponAbilityMod(weaponData);
+    const profBonus = isWeaponProficient(weaponData) ? character.proficiencyBonus : 0;
+    const attackBonus = abilityMod + profBonus + cw.magicBonus;
+
+    // Damage: dice + ability mod + magic bonus
+    const dice = (cw.usesTwoHands && weaponData.versatileDice) ? weaponData.versatileDice : weaponData.damageDice;
+    const totalDmgMod = abilityMod + cw.magicBonus;
+    const damageFormula = `${dice}${totalDmgMod >= 0 ? '+' + totalDmgMod : totalDmgMod}`;
+
+    return { ...cw, attackBonus, damageFormula, damageType: weaponData.damageType };
+  };
+
+  const addWeapon = (weaponId: string) => {
+    const weaponData = WEAPON_DATABASE.find(w => w.value === weaponId);
+    if (!weaponData) return;
+
+    const isTwoHanded = weaponData.properties.includes('Two-Handed');
+
+    const newWeapon: CharacterWeapon = {
+      weaponId,
+      magicBonus: 0,
+      usesTwoHands: isTwoHanded,
+      attackBonus: 0,
+      damageFormula: '',
+      damageType: weaponData.damageType,
+    };
+
+    const calculated = calculateWeapon(newWeapon);
+    handleUpdate('weapons', [...character.weapons, calculated]);
+  };
+
+  // Recalculate all weapons khi stats thay đổi
+  useEffect(() => {
+    if (character.weapons.length === 0) return;
+    const updated = character.weapons.map(w => calculateWeapon(w));
+    // Chỉ update nếu có thay đổi thực sự
+    const changed = updated.some((w, i) =>
+      w.attackBonus !== character.weapons[i].attackBonus ||
+      w.damageFormula !== character.weapons[i].damageFormula
+    );
+    if (changed) handleUpdate('weapons', updated);
+  }, [character.stats, character.proficiencyBonus, character.className]);
 
   const addSpell = (level: number) => {
     // Sử dụng map để đảm bảo immutability cho mảng spellLevels và mảng spells con
@@ -703,7 +813,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
               <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-4 border-b border-dragon-700 pb-1">
-                  <h3 className="text-dragon-gold font-fantasy text-sm uppercase tracking-wider">Tấn công & Phép thuật</h3>
+                  <h3 className="text-dragon-gold font-fantasy text-sm uppercase tracking-wider">Vũ khí (Auto)</h3>
                   <div className="relative">
                     <button
                       onClick={() => setShowWeaponMenu(!showWeaponMenu)}
@@ -715,90 +825,233 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     {showWeaponMenu && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setShowWeaponMenu(false)}></div>
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
-                          {WEAPONS_VN.map(w => (
-                            <button
-                              key={w.value}
-                              className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50 last:border-0"
-                              onClick={() => {
-                                addAttack(w.value);
-                                setShowWeaponMenu(false);
-                              }}
-                            >
-                              {w.label}
+                        <div className="absolute right-0 top-full mt-1 w-64 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-80 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
+                          {/* Simple Melee */}
+                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Simple Melee</div>
+                          {WEAPON_DATABASE.filter(w => w.category === 'Simple' && w.type === 'Melee').map(w => (
+                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
+                              <span className="font-medium">{w.label}</span>
+                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
                             </button>
                           ))}
-                          <button
-                            className="w-full text-left px-3 py-2 text-xs text-dragon-gold hover:bg-dragon-800 border-t border-dragon-700 font-bold"
-                            onClick={() => {
-                              addAttack();
-                              setShowWeaponMenu(false);
-                            }}
-                          >
-                            Tùy chỉnh...
-                          </button>
+                          {/* Simple Ranged */}
+                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Simple Ranged</div>
+                          {WEAPON_DATABASE.filter(w => w.category === 'Simple' && w.type === 'Ranged').map(w => (
+                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
+                              <span className="font-medium">{w.label}</span>
+                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                            </button>
+                          ))}
+                          {/* Martial Melee */}
+                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Martial Melee</div>
+                          {WEAPON_DATABASE.filter(w => w.category === 'Martial' && w.type === 'Melee').map(w => (
+                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
+                              <span className="font-medium">{w.label}</span>
+                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                            </button>
+                          ))}
+                          {/* Martial Ranged */}
+                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Martial Ranged</div>
+                          {WEAPON_DATABASE.filter(w => w.category === 'Martial' && w.type === 'Ranged').map(w => (
+                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
+                              <span className="font-medium">{w.label}</span>
+                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                            </button>
+                          ))}
                         </div>
                       </>
                     )}
                   </div>
                 </div>
 
-                {/* Attack Headers */}
-                <div className="grid grid-cols-12 gap-2 px-2 mb-2 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
-                  <div className="col-span-4">Tên</div>
-                  <div className="col-span-2 text-center flex items-center justify-center gap-1">
-                    Bonus <InfoTooltip content="Attack Bonus: Số cộng vào d20 khi tấn công.\nCông thức: Proficiency Bonus + Str/Dex Mod." />
-                  </div>
-                  <div className="col-span-5 flex items-center gap-1">
-                    Sát thương <InfoTooltip content="Damage: Sát thương gây ra khi trúng.\nCông thức: Xúc xắc vũ khí + Str/Dex Mod." />
-                  </div>
-                  <div className="col-span-1"></div>
-                </div>
-
+                {/* Weapon items */}
                 <div className="space-y-3">
-                  {character.attacks.map((atk, i) => (
-                    <div key={i} className="grid grid-cols-12 gap-2 items-center bg-dragon-800/50 p-2 rounded border border-dragon-700">
-                      <input
-                        className="col-span-4 bg-transparent text-white font-bold text-xs focus:outline-none focus:text-dragon-gold"
-                        value={atk.name}
-                        onChange={(e) => {
-                          // FIXED: Use map to create a new array reference instead of mutating state directly
-                          const newAtks = character.attacks.map((a, idx) =>
-                            idx === i ? { ...a, name: e.target.value } : a
-                          );
-                          handleUpdate('attacks', newAtks);
-                        }}
-                      />
-                      <input
-                        type="number"
-                        className="col-span-2 bg-transparent text-gray-400 text-xs text-center focus:outline-none focus:text-white"
-                        value={atk.bonus}
-                        onChange={(e) => {
-                          const newAtks = character.attacks.map((a, idx) =>
-                            idx === i ? { ...a, bonus: parseInt(e.target.value) || 0 } : a
-                          );
-                          handleUpdate('attacks', newAtks);
-                        }}
-                      />
-                      <input
-                        className="col-span-5 bg-transparent text-gray-400 text-xs focus:outline-none focus:text-white"
-                        value={`${atk.damage} ${atk.type}`}
-                        onChange={(e) => {
-                          const parts = e.target.value.split(' ');
-                          const damage = parts[0] || '';
-                          const type = parts.slice(1).join(' ') || '';
+                  {character.weapons.map((cw, i) => {
+                    const wd = WEAPON_DATABASE.find(w => w.value === cw.weaponId);
+                    if (!wd) return null;
+                    const isProficient = isWeaponProficient(wd);
+                    return (
+                      <div key={i} className="bg-dragon-800/50 p-3 rounded border border-dragon-700 space-y-2">
+                        {/* Row 1: Name + Attack + Damage */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white truncate">
+                              {cw.customName || wd.label}
+                              {cw.magicBonus > 0 && <span className="text-purple-400 ml-1">+{cw.magicBonus}</span>}
+                            </div>
+                          </div>
+                          <div className="text-center px-2">
+                            <div className="text-dragon-gold font-bold text-lg font-mono">
+                              {cw.attackBonus >= 0 ? '+' : ''}{cw.attackBonus}
+                            </div>
+                            <div className="text-[8px] text-gray-500 uppercase">Atk</div>
+                          </div>
+                          <div className="text-center px-2">
+                            <div className="text-white font-bold text-sm font-mono">{cw.damageFormula}</div>
+                            <div className="text-[8px] text-gray-500">{cw.damageType}</div>
+                          </div>
+                          <button onClick={() => handleUpdate('weapons', character.weapons.filter((_, idx) => idx !== i))} className="text-red-900 hover:text-red-500 shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
 
-                          const newAtks = character.attacks.map((a, idx) =>
-                            idx === i ? { ...a, damage, type } : a
-                          );
-                          handleUpdate('attacks', newAtks);
-                        }}
-                      />
-                      <button onClick={() => handleUpdate('attacks', character.attacks.filter((_, idx) => idx !== i))} className="col-span-1 text-red-900 hover:text-red-500"><Trash2 size={12} /></button>
-                    </div>
-                  ))}
+                        {/* Row 2: Properties, mastery, controls */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Proficiency badge */}
+                          <BadgeTooltip
+                            tooltip={isProficient
+                              ? `✅ Thông thạo: Cộng Proficiency Bonus (+${character.proficiencyBonus}) vào Attack Roll. ${wd.category === 'Simple' ? 'Mọi class đều thông thạo Simple.' : 'Martial: Fighter, Paladin, Ranger, Barbarian.'}`
+                              : `❌ Không thông thạo: Không cộng Proficiency Bonus vào Attack Roll. ${wd.category} weapon cần class phù hợp.`
+                            }
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${isProficient ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}
+                          >
+                            {isProficient ? '✓ Prof' : '✗ No Prof'}
+                          </BadgeTooltip>
+                          {/* Category & type */}
+                          <BadgeTooltip
+                            tooltip={`${wd.category === 'Simple' ? 'Đơn giản: Vũ khí cơ bản, hầu hết class đều thông thạo.' : 'Chiến trận: Vũ khí chuyên dụng, cần huấn luyện.'} ${wd.type === 'Melee' ? 'Cận chiến: Tấn công trong 5ft.' : 'Tầm xa: Tấn công từ khoảng cách xa, dùng DEX.'}`}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-dragon-700/50 text-gray-400"
+                          >
+                            {wd.category} {wd.type}
+                          </BadgeTooltip>
+                          {/* Mastery badge */}
+                          <BadgeTooltip
+                            tooltip={MASTERY_INFO[wd.mastery] || wd.mastery}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 font-bold"
+                          >
+                            ⚔ {wd.mastery}
+                          </BadgeTooltip>
+                          {/* Properties */}
+                          {wd.properties.map(p => (
+                            <BadgeTooltip
+                              key={p}
+                              tooltip={PROPERTY_INFO[p] || p}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-dragon-700/30 text-gray-500"
+                            >
+                              {p}
+                            </BadgeTooltip>
+                          ))}
+                          {/* Range */}
+                          {wd.rangeNormal && (
+                            <BadgeTooltip
+                              tooltip={`Tầm bắn: ${wd.rangeNormal}ft (thường) / ${wd.rangeLong}ft (xa). Vượt tầm thường = Disadvantage. Vượt tầm xa = không thể tấn công.`}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
+                            >
+                              🎯 {wd.rangeNormal}/{wd.rangeLong} ft.
+                            </BadgeTooltip>
+                          )}
+                        </div>
+
+                        {/* Row 3: Controls */}
+                        <div className="flex items-center gap-3 text-[10px]">
+                          {/* Versatile toggle */}
+                          {wd.properties.includes('Versatile') && (
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={cw.usesTwoHands}
+                                onChange={(e) => {
+                                  const updated = character.weapons.map((w, idx) =>
+                                    idx === i ? calculateWeapon({ ...w, usesTwoHands: e.target.checked }) : w
+                                  );
+                                  handleUpdate('weapons', updated);
+                                }}
+                                className="w-3 h-3 accent-dragon-gold"
+                              />
+                              <span className="text-gray-400">Hai tay ({wd.versatileDice})</span>
+                            </label>
+                          )}
+                          {/* Magic bonus */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Magic:</span>
+                            <select
+                              className="bg-transparent text-purple-400 font-bold appearance-none focus:outline-none cursor-pointer"
+                              value={cw.magicBonus}
+                              onChange={(e) => {
+                                const updated = character.weapons.map((w, idx) =>
+                                  idx === i ? calculateWeapon({ ...w, magicBonus: parseInt(e.target.value) }) : w
+                                );
+                                handleUpdate('weapons', updated);
+                              }}
+                            >
+                              <option value="0" className="bg-dragon-900">+0</option>
+                              <option value="1" className="bg-dragon-900">+1</option>
+                              <option value="2" className="bg-dragon-900">+2</option>
+                              <option value="3" className="bg-dragon-900">+3</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* Manual Attacks (legacy) */}
+              {character.attacks.length > 0 && (
+                <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-4 border-b border-dragon-700 pb-1">
+                    <h3 className="text-dragon-gold font-fantasy text-sm uppercase tracking-wider">Tùy chỉnh thủ công</h3>
+                    <button
+                      onClick={addAttack}
+                      className="text-dragon-gold hover:text-white transition-colors flex items-center gap-1 text-xs font-bold uppercase"
+                    >
+                      <Plus size={14} /> Thêm
+                    </button>
+                  </div>
+
+                  {/* Attack Headers */}
+                  <div className="grid grid-cols-12 gap-2 px-2 mb-2 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
+                    <div className="col-span-4">Tên</div>
+                    <div className="col-span-2 text-center">Bonus</div>
+                    <div className="col-span-5">Sát thương</div>
+                    <div className="col-span-1"></div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {character.attacks.map((atk, i) => (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-center bg-dragon-800/50 p-2 rounded border border-dragon-700">
+                        <input
+                          className="col-span-4 bg-transparent text-white font-bold text-xs focus:outline-none focus:text-dragon-gold"
+                          value={atk.name}
+                          onChange={(e) => {
+                            const newAtks = character.attacks.map((a, idx) =>
+                              idx === i ? { ...a, name: e.target.value } : a
+                            );
+                            handleUpdate('attacks', newAtks);
+                          }}
+                        />
+                        <input
+                          type="number"
+                          className="col-span-2 bg-transparent text-gray-400 text-xs text-center focus:outline-none focus:text-white"
+                          value={atk.bonus}
+                          onChange={(e) => {
+                            const newAtks = character.attacks.map((a, idx) =>
+                              idx === i ? { ...a, bonus: parseInt(e.target.value) || 0 } : a
+                            );
+                            handleUpdate('attacks', newAtks);
+                          }}
+                        />
+                        <input
+                          className="col-span-5 bg-transparent text-gray-400 text-xs focus:outline-none focus:text-white"
+                          value={`${atk.damage} ${atk.type}`}
+                          onChange={(e) => {
+                            const parts = e.target.value.split(' ');
+                            const damage = parts[0] || '';
+                            const type = parts.slice(1).join(' ') || '';
+
+                            const newAtks = character.attacks.map((a, idx) =>
+                              idx === i ? { ...a, damage, type } : a
+                            );
+                            handleUpdate('attacks', newAtks);
+                          }}
+                        />
+                        <button onClick={() => handleUpdate('attacks', character.attacks.filter((_, idx) => idx !== i))} className="col-span-1 text-red-900 hover:text-red-500"><Trash2 size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Equipment & Money */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1071,7 +1324,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
         )}
 
       </div>
-    </div>
+    </div >
   );
 };
 
