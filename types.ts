@@ -25,16 +25,52 @@ export interface SpellLevel {
   spells: string[];
 }
 
+export interface Subclass {
+  value: string;
+  label: string;
+  className: string;
+  description: string;
+  levelGained: number;
+  features: string[];
+}
+
+export interface ArmorData {
+  value: string;
+  label: string;
+  category: 'Light' | 'Medium' | 'Heavy' | 'Shield';
+  acFormula: string;
+  acBase: number;
+  maxDexBonus: number | null; // null = unlimited, 0 = none
+  strRequirement: number | null;
+  stealthDisadvantage: boolean;
+  weight: number;
+  cost: string;
+}
+
+export interface Feat {
+  value: string;
+  label: string;
+  category: 'Origin' | 'General' | 'Fighting Style' | 'Epic Boon';
+  prerequisite: string;
+  description: string;
+}
+
 export interface Character {
   // Trang 1: Thông tin cơ bản & Chiến đấu
   name: string;
   className: string; // Thay cho classLevel
+  subclass: string;  // Subclass đã chọn
   level: number;     // Tách level ra riêng
   background: string;
   race: string;
   alignment: string;
   xp: number;
   playerName: string;
+
+  // Trang bị giáp
+  armorWorn: string;       // Tên armor đang mặc (rỗng = không mặc)
+  shieldEquipped: boolean; // Có cầm shield không (+2 AC)
+  feats: string[];         // Danh sách feats đã chọn
 
   stats: {
     str: AbilityScore;
