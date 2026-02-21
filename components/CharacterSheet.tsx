@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
 import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE } from '../constants';
 import { SPELL_DATABASE } from '../data/spells';
+import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -821,10 +822,36 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                       value={character.hp.max}
                       onChange={(e) => handleUpdate('hp.max', parseInt(e.target.value) || 0)}
                     />
-                    <InfoTooltip content="Hit Points (HP): Sức chịu đựng sát thương. Level 1 = Max Hit Die + Con Mod." />
+                    <InfoTooltip content="Hit Points (HP): Sức chịu đựng sát thương. Level 1 = Max Hit Die + Con Mod. Level 2+: Roll Hit Die + CON mod (hoặc lấy trung bình)." />
                   </div>
                   <span className="text-red-500 flex items-center gap-1 uppercase tracking-wider"><Heart size={14} /> Máu hiện tại</span>
                 </div>
+
+                {/* HP Level Up Info */}
+                {(() => {
+                  const classData = CLASSES_VN.find(c => c.value === character.className);
+                  const hitDie = classData?.hitDie;
+                  if (!hitDie) return null;
+                  const dieValue = parseInt(hitDie.substring(1));
+                  const conMod = character.stats.con.modifier;
+                  const avgRoll = Math.floor(dieValue / 2) + 1;
+                  const avgGain = Math.max(1, avgRoll + conMod);
+
+                  return (
+                    <div className="mb-3 bg-dragon-800/60 border border-dragon-700 rounded-lg p-2 px-3">
+                      <div className="flex items-center justify-between text-[10px] text-gray-400">
+                        <span>
+                          <span className="text-dragon-gold font-bold">🎲 Level Up:</span>
+                          {' '}Roll {hitDie} {conMod >= 0 ? '+' : ''} {conMod} (CON)
+                        </span>
+                        <span className="text-gray-500">
+                          TB: <span className="text-green-400 font-bold">+{avgGain}</span>
+                          {' | '}Lv1: <span className="text-blue-400 font-bold">{dieValue + conMod}</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <input
                   type="number"
                   className="w-full bg-dragon-800 border-2 border-dragon-700 text-center text-4xl font-fantasy font-bold py-2 rounded-lg text-white focus:border-red-500 outline-none"
@@ -1238,14 +1265,68 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                 </div>
               </div>
 
-              {/* Features & Traits */}
+              {/* Class & Subclass Features (Auto from Database) */}
+              {(() => {
+                const activeFeats = getActiveFeatures(character.className, character.subclass, character.level);
+                const classFeats = activeFeats.filter(f => f.source === 'class');
+                const subFeats = activeFeats.filter(f => f.source === 'subclass');
+                const actionColors: Record<string, string> = {
+                  'Action': 'bg-blue-900/50 text-blue-300 border-blue-700',
+                  'Bonus Action': 'bg-orange-900/50 text-orange-300 border-orange-700',
+                  'Reaction': 'bg-purple-900/50 text-purple-300 border-purple-700',
+                  'Passive': 'bg-green-900/50 text-green-300 border-green-700',
+                  'Special': 'bg-yellow-900/50 text-yellow-300 border-yellow-700',
+                };
+                const renderFeature = (f: ClassFeature) => (
+                  <div key={f.name + f.subclass} className="bg-dragon-950/50 border border-dragon-800 rounded-lg p-3 hover:border-dragon-gold/30 transition-colors">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-white">{f.name}</span>
+                        <span className="text-[10px] text-gray-500">({f.label})</span>
+                        <span className="text-[9px] text-dragon-gold/60">Lv{f.level}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {f.actionType && <span className={`text-[9px] px-1.5 py-0.5 rounded border ${actionColors[f.actionType] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>{f.actionType}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      {f.dice && <span className="text-[10px] bg-red-900/40 text-red-300 border border-red-800 px-1.5 py-0.5 rounded">🎲 {f.dice}</span>}
+                      {f.usesPerRest && <span className="text-[10px] bg-cyan-900/40 text-cyan-300 border border-cyan-800 px-1.5 py-0.5 rounded">⟳ {f.usesPerRest}</span>}
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed whitespace-pre-line">{f.description}</p>
+                  </div>
+                );
+                return activeFeats.length > 0 ? (
+                  <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
+                    <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Class & Subclass Features — Lv{character.level}</h3>
+                    {classFeats.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="text-[11px] font-bold text-gray-400 uppercase mb-2 tracking-wider">Class: {character.className}</h4>
+                        <div className="space-y-2">
+                          {classFeats.map(renderFeature)}
+                        </div>
+                      </div>
+                    )}
+                    {subFeats.length > 0 && (
+                      <div>
+                        <h4 className="text-[11px] font-bold text-gray-400 uppercase mb-2 tracking-wider">Subclass: {character.subclass}</h4>
+                        <div className="space-y-2">
+                          {subFeats.map(renderFeature)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Features & Traits (Manual) */}
               <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Đặc điểm & Kỹ năng đặc biệt (Features & Traits)</h3>
+                <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Đặc điểm bổ sung (Ghi chú thêm)</h3>
                 <textarea
-                  className="w-full bg-transparent text-xs text-gray-300 min-h-[120px] focus:outline-none border border-dragon-800 rounded p-2 focus:border-dragon-gold/30"
+                  className="w-full bg-transparent text-xs text-gray-300 min-h-[80px] focus:outline-none border border-dragon-800 rounded p-2 focus:border-dragon-gold/30"
                   value={character.features}
                   onChange={(e) => handleUpdate('features', e.target.value)}
-                  placeholder="Các đặc điểm từ Class, Race, Background hoặc Feats..."
+                  placeholder="Ghi chú thêm: feats, racial traits, homebrew features..."
                 />
               </div>
 
