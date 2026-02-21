@@ -104,7 +104,7 @@ Wizard là full caster mạnh nhất game về **spell versatility**. Học phé
 
 ---
 
-## Phép Quan Trọng Theo Level
+## Phép Quan Trọng
 
 | Level | Must-Have Spells |
 |---|---|

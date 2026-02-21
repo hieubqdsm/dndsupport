@@ -13,6 +13,25 @@ Druid là full caster thiên nhiên với khả năng đặc trưng **Wild Shape
 
 ---
 
+## Bảng Level & Spell Slots
+
+| Level | Cantrips | 1st | 2nd | 3rd | 4th | 5th | Features |
+|---|---|---|---|---|---|---|---|
+| 1 | 2 | 2 | — | — | — | — | Druidic, Spellcasting |
+| 2 | 2 | 3 | — | — | — | — | Wild Shape, Wild Companion |
+| 3 | 2 | 4 | 2 | — | — | — | **Subclass** |
+| 4 | 3 | 4 | 3 | — | — | — | Wild Shape Improvement, ASI / Feat |
+| 5 | 3 | 4 | 3 | 2 | — | — | Wild Resurgence |
+| 6 | 3 | 4 | 3 | 3 | — | — | Subclass Feature |
+| 7 | 3 | 4 | 3 | 3 | 1 | — | — |
+| 8 | 3 | 4 | 3 | 3 | 2 | — | Wild Shape Improvement (Flying), ASI / Feat |
+| 9 | 3 | 4 | 3 | 3 | 3 | 1 | — |
+| 10 | 4 | 4 | 3 | 3 | 3 | 2 | Subclass Feature |
+
+*(Slot table giống Full Caster — xem Wizard để đầy đủ cấp 6-9)*
+
+---
+
 ## Class Features Chi Tiết
 
 ### Druidic (Lv1) — Passive
