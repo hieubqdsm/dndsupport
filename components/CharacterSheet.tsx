@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
 import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE } from '../constants';
-import { SPELL_DATABASE } from '../spellDatabase';
+import { SPELL_DATABASE } from '../data/spells';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
 interface Props {
