@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
 import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE } from '../constants';
+import { SPELL_DATABASE } from '../spellDatabase';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -182,6 +183,8 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   const [activeTab, setActiveTab] = React.useState<TabType>('combat');
   const [showWeaponMenu, setShowWeaponMenu] = useState(false);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
+  const [openSpellLevel, setOpenSpellLevel] = useState<number | null>(null);
+  const [spellSearch, setSpellSearch] = useState('');
 
   // Xác định Class hiện tại để lấy thông tin auto-lock
   const currentClassData = CLASSES_VN.find(c => c.value === character.className);
@@ -439,11 +442,10 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     if (changed) handleUpdate('weapons', updated);
   }, [character.stats, character.proficiencyBonus, character.className]);
 
-  const addSpell = (level: number) => {
-    // Sử dụng map để đảm bảo immutability cho mảng spellLevels và mảng spells con
+  const addSpell = (levelIdx: number, spellName: string) => {
     const newSpellLevels = character.spellLevels.map((lvl, idx) => {
-      if (idx === level) {
-        return { ...lvl, spells: [...lvl.spells, "Phép mới"] };
+      if (idx === levelIdx) {
+        return { ...lvl, spells: [...lvl.spells, spellName] };
       }
       return lvl;
     });
@@ -518,7 +520,12 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
             {/* XP */}
             <div className="border-b border-dragon-700 pb-1">
-              <label className="text-[9px] uppercase font-bold text-gray-500 block">Kinh nghiệm (XP)</label>
+              <div className="flex items-center gap-1">
+                <label className="text-[9px] uppercase font-bold text-gray-500">Kinh nghiệm (XP)</label>
+                <BadgeTooltip tooltip={`XP cần để lên level:\n\nLv 2: 300\nLv 3: 900\nLv 4: 2,700\nLv 5: 6,500\nLv 6: 14,000\nLv 7: 23,000\nLv 8: 34,000\nLv 9: 48,000\nLv 10: 64,000\nLv 11: 85,000\nLv 12: 100,000\nLv 13: 120,000\nLv 14: 140,000\nLv 15: 165,000\nLv 16: 195,000\nLv 17: 225,000\nLv 18: 265,000\nLv 19: 305,000\nLv 20: 355,000`} className="text-gray-600 hover:text-dragon-gold cursor-help">
+                  <Info size={9} />
+                </BadgeTooltip>
+              </div>
               <input
                 type="number"
                 className="bg-transparent text-sm font-medium text-gray-200 w-full focus:outline-none"
@@ -646,6 +653,33 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                 </div>
               </div>
 
+              {/* Inspiration + Passive Perception */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Inspiration */}
+                <div className="bg-dragon-900/50 p-3 rounded-lg border border-dragon-700 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={character.inspiration}
+                    onChange={(e) => handleUpdate('inspiration', e.target.checked)}
+                    className="w-5 h-5 accent-dragon-gold cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Inspiration</span>
+                    <InfoTooltip content="Inspiration: DM thưởng khi roleplay tốt. Dùng để có Advantage cho 1 roll bất kỳ (attack, save, ability check). Chỉ có hoặc không, không cộng dồn." />
+                  </div>
+                </div>
+                {/* Passive Perception */}
+                <div className="bg-dragon-900/50 p-3 rounded-lg border border-dragon-700 flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Nhận thức thụ động</span>
+                    <InfoTooltip content={`Passive Perception = 10 + WIS modifier${character.skills.find(s => s.name === 'Quan Sát')?.proficient ? ' + Proficiency' : ''}. DM dùng để kiểm tra xem nhân vật có nhận ra mối nguy hiểm, bẫy, hoặc kẻ thù lén lút mà không cần roll.`} />
+                  </div>
+                  <span className="text-xl font-bold text-dragon-gold font-mono">
+                    {10 + character.stats.wis.modifier + (character.skills.find(s => s.name === 'Quan Sát')?.proficient ? character.proficiencyBonus : 0)}
+                  </span>
+                </div>
+              </div>
+
               <div className="bg-dragon-900/50 p-4 rounded-lg border border-dragon-700">
                 <h3 className="text-dragon-gold font-fantasy text-sm mb-4 border-b border-dragon-700 pb-1 uppercase tracking-wider">Kĩ năng (Skills)</h3>
                 <div className="space-y-1 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar text-[13px]">
@@ -697,17 +731,17 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                         <option value="" className="bg-dragon-900">Không mặc giáp</option>
                         <optgroup label="Light Armor" className="bg-dragon-900 text-gray-400">
                           {ARMOR_VN.filter(a => a.category === 'Light').map(a => (
-                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula}</option>
+                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula} · {a.cost}</option>
                           ))}
                         </optgroup>
                         <optgroup label="Medium Armor" className="bg-dragon-900 text-gray-400">
                           {ARMOR_VN.filter(a => a.category === 'Medium').map(a => (
-                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula}</option>
+                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula} · {a.cost}</option>
                           ))}
                         </optgroup>
                         <optgroup label="Heavy Armor" className="bg-dragon-900 text-gray-400">
                           {ARMOR_VN.filter(a => a.category === 'Heavy').map(a => (
-                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula}</option>
+                            <option key={a.value} value={a.value} className="bg-dragon-900 text-gray-200">{a.label} — AC {a.acFormula} · {a.cost}</option>
                           ))}
                         </optgroup>
                       </select>
@@ -810,6 +844,42 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     <input type="number" className="bg-transparent text-white font-bold w-full focus:outline-none" value={character.hp.temp} onChange={(e) => handleUpdate('hp.temp', parseInt(e.target.value) || 0)} />
                   </div>
                 </div>
+
+                {/* Death Saves */}
+                <div className="mt-3 bg-dragon-700/30 p-3 rounded border border-dragon-600">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-500 font-bold uppercase text-[9px]">Cứu tử (Death Saves)</span>
+                    <InfoTooltip content="Death Saves: Khi HP = 0, mỗi lượt roll d20. ≥10 = Success, <10 = Failure. 3 Success = ổn định (1 HP). 3 Failure = chết. Nat 20 = lập tức hồi 1 HP. Nat 1 = 2 Failure." alignRight />
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-green-400 font-bold uppercase">✓</span>
+                      {[1, 2, 3].map(n => (
+                        <button
+                          key={`s${n}`}
+                          onClick={() => handleUpdate('deathSaves.success', character.deathSaves.success >= n ? n - 1 : n)}
+                          className={`w-4 h-4 rounded-full border-2 transition-colors ${character.deathSaves.success >= n
+                            ? 'bg-green-500 border-green-400'
+                            : 'bg-transparent border-gray-600 hover:border-green-400'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-red-400 font-bold uppercase">✗</span>
+                      {[1, 2, 3].map(n => (
+                        <button
+                          key={`f${n}`}
+                          onClick={() => handleUpdate('deathSaves.failure', character.deathSaves.failure >= n ? n - 1 : n)}
+                          className={`w-4 h-4 rounded-full border-2 transition-colors ${character.deathSaves.failure >= n
+                            ? 'bg-red-500 border-red-400'
+                            : 'bg-transparent border-gray-600 hover:border-red-400'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
@@ -833,6 +903,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
                               <span className="font-medium">{w.label}</span>
                               <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                              <span className="text-gray-600 ml-1">{w.cost}</span>
                             </button>
                           ))}
                           {/* Simple Ranged */}
@@ -841,6 +912,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
                               <span className="font-medium">{w.label}</span>
                               <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                              <span className="text-gray-600 ml-1">{w.cost}</span>
                             </button>
                           ))}
                           {/* Martial Melee */}
@@ -849,6 +921,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
                               <span className="font-medium">{w.label}</span>
                               <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                              <span className="text-gray-600 ml-1">{w.cost}</span>
                             </button>
                           ))}
                           {/* Martial Ranged */}
@@ -857,6 +930,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
                               <span className="font-medium">{w.label}</span>
                               <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                              <span className="text-gray-600 ml-1">{w.cost}</span>
                             </button>
                           ))}
                         </div>
@@ -1132,16 +1206,23 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
                 <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
                   <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Tiền tệ (Money)</h3>
-                  <div className="grid grid-cols-5 gap-2 text-center">
-                    {['cp', 'sp', 'ep', 'gp', 'pp'].map((coin) => (
-                      <div key={coin} className="bg-dragon-800/50 rounded p-1 border border-dragon-700">
-                        <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">{coin}</label>
+                  <div className="space-y-1.5">
+                    {[
+                      { key: 'cp', vn: 'Đồng', color: 'text-amber-700' },
+                      { key: 'sp', vn: 'Bạc', color: 'text-gray-400' },
+                      { key: 'ep', vn: 'Vàng Kim', color: 'text-blue-300' },
+                      { key: 'gp', vn: 'Vàng', color: 'text-yellow-400' },
+                      { key: 'pp', vn: 'Bạch Kim', color: 'text-gray-200' },
+                    ].map((coin) => (
+                      <div key={coin.key} className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold uppercase w-14 shrink-0 ${coin.color}`}>{coin.vn}</span>
                         <input
                           type="number"
-                          className="w-full bg-transparent text-center text-xs text-white font-bold focus:outline-none"
-                          value={(character.money as any)[coin]}
-                          onChange={(e) => handleUpdate(`money.${coin}`, parseInt(e.target.value) || 0)}
+                          className="w-14 bg-dragon-800/50 rounded px-1.5 py-0.5 text-xs text-white font-bold text-center focus:outline-none border border-dragon-700 focus:border-dragon-gold"
+                          value={(character.money as any)[coin.key]}
+                          onChange={(e) => handleUpdate(`money.${coin.key}`, parseInt(e.target.value) || 0)}
                         />
+                        <span className="text-[9px] text-gray-600 uppercase w-5">{coin.key}</span>
                       </div>
                     ))}
                   </div>
@@ -1260,26 +1341,69 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
         {/* --- TRANG 3: PHÉP THUẬT --- */}
         {activeTab === 'spells' && (
           <div className="space-y-8 animate-in zoom-in-95 duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {[
-                { label: 'Khả năng dùng phép', path: 'spellcastingAbility' },
-                { label: 'DC Tránh đòn phép', path: 'spellSaveDC', type: 'number' },
-                { label: 'Hộ trợ tấn công phép', path: 'spellAttackBonus', type: 'number' }
-              ].map(stat => (
-                <div key={stat.path} className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center">
-                  <label className="text-[10px] font-bold text-dragon-gold uppercase">{stat.label}</label>
-                  <input
-                    type={stat.type || 'text'}
-                    className="bg-transparent text-2xl font-fantasy text-white w-full text-center focus:outline-none"
-                    value={(character as any)[stat.path]}
-                    onChange={(e) => handleUpdate(stat.path, stat.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)}
-                  />
+            {(() => {
+              // Class → Spellcasting Ability mapping
+              const CLASS_SPELL_ABILITY: Record<string, string> = {
+                'Wizard': 'int', 'Artificer': 'int',
+                'Cleric': 'wis', 'Druid': 'wis', 'Ranger': 'wis', 'Monk': 'wis',
+                'Bard': 'cha', 'Sorcerer': 'cha', 'Warlock': 'cha', 'Paladin': 'cha',
+              };
+              const ABILITY_LABELS: Record<string, string> = {
+                'str': 'STR', 'dex': 'DEX', 'con': 'CON', 'int': 'INT', 'wis': 'WIS', 'cha': 'CHA'
+              };
+              const spellAbilityKey = CLASS_SPELL_ABILITY[character.className] || '';
+              const spellAbilityLabel = ABILITY_LABELS[spellAbilityKey] || '—';
+              const statObj = spellAbilityKey ? (character.stats as any)[spellAbilityKey] : null;
+              const abilityScore = statObj ? (typeof statObj === 'object' ? statObj.score : statObj) || 10 : 10;
+              const abilityMod = Math.floor((abilityScore - 10) / 2);
+              const spellSaveDC = spellAbilityKey ? 8 + character.proficiencyBonus + abilityMod : 0;
+              const spellAttackBonus = spellAbilityKey ? character.proficiencyBonus + abilityMod : 0;
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  {/* Khả năng dùng phép */}
+                  <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center relative">
+                    <div className="flex items-center justify-center gap-1">
+                      <label className="text-[10px] font-bold text-dragon-gold uppercase">Khả năng dùng phép</label>
+                      <BadgeTooltip tooltip={`Chỉ số năng lực dùng để cast phép, phụ thuộc vào class:\n\nWizard → INT (Trí tuệ)\nCleric / Druid / Ranger → WIS (Minh triết)\nBard / Sorcerer / Warlock / Paladin → CHA (Sức hút)\n\nChỉ số này ảnh hưởng đến Spell DC và Spell Attack.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                        <Info size={10} />
+                      </BadgeTooltip>
+                    </div>
+                    <div className="text-lg font-fantasy text-white mt-1">{spellAbilityLabel}</div>
+                    {spellAbilityKey && <div className="text-xs text-gray-400 mt-1">{abilityScore} ({abilityMod >= 0 ? '+' : ''}{abilityMod})</div>}
+                    {!spellAbilityKey && <div className="text-xs text-gray-500 mt-1">Chọn class trước</div>}
+                  </div>
+
+                  {/* DC Tránh đòn phép */}
+                  <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <label className="text-[10px] font-bold text-dragon-gold uppercase">DC Tránh đòn phép</label>
+                      <BadgeTooltip tooltip={`Khi bạn cast phép buộc mục tiêu save (VD: Fireball → DEX save), mục tiêu cần roll đạt >= DC này.\n\nCông thức: 8 + Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= ${spellSaveDC}\n\nDC càng cao → phép càng khó tránh.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                        <Info size={10} />
+                      </BadgeTooltip>
+                    </div>
+                    <div className="text-2xl font-fantasy text-white mt-1">{spellAbilityKey ? spellSaveDC : '—'}</div>
+                    {spellAbilityKey && <div className="text-xs text-gray-400 mt-1">8 + {character.proficiencyBonus} + ({abilityMod})</div>}
+                  </div>
+
+                  {/* Hỗ trợ tấn công phép */}
+                  <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <label className="text-[10px] font-bold text-dragon-gold uppercase">Hỗ trợ tấn công phép</label>
+                      <BadgeTooltip tooltip={`Khi cast phép cần roll to hit (VD: Fire Bolt, Guiding Bolt), cộng bonus này vào d20.\n\nCông thức: Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= +${spellAttackBonus}\n\nSo sánh với AC kẻ thù để xem trúng hay không.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                        <Info size={10} />
+                      </BadgeTooltip>
+                    </div>
+                    <div className="text-2xl font-fantasy text-white mt-1">{spellAbilityKey ? `+${spellAttackBonus}` : '—'}</div>
+                    {spellAbilityKey && <div className="text-xs text-gray-400 mt-1">{character.proficiencyBonus} + ({abilityMod})</div>}
+                  </div>
+
+                  <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center flex items-center justify-center">
+                    <Sparkles className="text-dragon-gold animate-pulse" />
+                  </div>
                 </div>
-              ))}
-              <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center flex items-center justify-center">
-                <Sparkles className="text-dragon-gold animate-pulse" />
-              </div>
-            </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {character.spellLevels.map((lvl, idx) => (
@@ -1287,11 +1411,56 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   <div className="flex justify-between items-center mb-3 border-b border-dragon-700 pb-2">
                     <div className="flex items-center gap-2">
                       <div className="bg-dragon-gold text-black w-6 h-6 rounded flex items-center justify-center font-bold text-xs">{lvl.level}</div>
-                      <span className="font-fantasy text-sm text-dragon-gold uppercase">
-                        {lvl.level === 0 ? 'Cantrips' : `Cấp ${lvl.level}`}
-                      </span>
+                      <BadgeTooltip
+                        tooltip={lvl.level === 0 ? 'Phép cơ bản — dùng không giới hạn, không tốn ô phép (Spell Slot)' : `Phép cấp ${lvl.level} — cần ${lvl.level >= 6 ? 'ô phép cấp cao' : 'ô phép'} để sử dụng`}
+                        className="font-fantasy text-sm text-dragon-gold uppercase cursor-help"
+                      >
+                        {lvl.level === 0 ? 'Phép cơ bản' : `Cấp ${lvl.level}`}
+                      </BadgeTooltip>
                     </div>
-                    <button onClick={() => addSpell(idx)} className="text-dragon-gold hover:text-white"><Plus size={14} /></button>
+                    <div className="relative">
+                      <button onClick={() => setOpenSpellLevel(openSpellLevel === idx ? null : idx)} className="text-dragon-gold hover:text-white"><Plus size={14} /></button>
+                      {openSpellLevel === idx && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => { setOpenSpellLevel(null); setSpellSearch(''); }} />
+                          <div className="absolute right-0 top-full mt-1 w-72 bg-dragon-900 border border-dragon-700 rounded shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+                            <input
+                              autoFocus
+                              className="w-full px-3 py-2 bg-dragon-800 text-xs text-white placeholder-gray-500 focus:outline-none border-b border-dragon-700"
+                              placeholder="Tìm phép..."
+                              value={spellSearch}
+                              onChange={(e) => setSpellSearch(e.target.value)}
+                            />
+                            <div className="max-h-60 overflow-y-auto">
+                              {SPELL_DATABASE
+                                .filter(sp => sp.level === lvl.level)
+                                .filter(sp => !spellSearch || sp.name.toLowerCase().includes(spellSearch.toLowerCase()) || sp.label.toLowerCase().includes(spellSearch.toLowerCase()))
+                                .map(sp => {
+                                  const isClassMatch = !character.className || sp.classes.includes(character.className);
+                                  return (
+                                    <button
+                                      key={sp.name}
+                                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50 ${isClassMatch ? 'text-gray-300' : 'text-gray-500'}`}
+                                      onClick={() => { addSpell(idx, sp.name); setOpenSpellLevel(null); setSpellSearch(''); }}
+                                    >
+                                      <span className="font-medium">{sp.name}</span>
+                                      <span className="text-gray-600 ml-1">({sp.label})</span>
+                                      {!isClassMatch && <span className="text-orange-400 ml-1 text-[10px]">không thuộc class</span>}
+                                      <div className="text-[10px] text-gray-500 mt-0.5">{sp.school} · {sp.castingTime} · {sp.range}{sp.concentration ? ' · Concentration' : ''}</div>
+                                    </button>
+                                  );
+                                })}
+                              <button
+                                className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-dragon-800 hover:text-white border-t border-dragon-600"
+                                onClick={() => { addSpell(idx, 'Tùy chỉnh...'); setOpenSpellLevel(null); setSpellSearch(''); }}
+                              >
+                                ✏️ Nhập tay...
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {lvl.level > 0 && (
@@ -1326,37 +1495,49 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   )}
 
                   <div className="space-y-1">
-                    {lvl.spells.map((s, spellIdx) => (
-                      <div key={spellIdx} className="flex items-center gap-2 group">
-                        <input
-                          className="flex-1 bg-transparent text-xs text-gray-300 py-1 border-b border-dragon-800 focus:border-dragon-gold outline-none focus:text-white"
-                          value={s}
-                          onChange={(e) => {
-                            // FIXED: Deep immutable update for spell names
-                            const newSpellLevels = character.spellLevels.map((l, i) => {
-                              if (i !== idx) return l;
-                              const newSpells = [...l.spells];
-                              newSpells[spellIdx] = e.target.value;
-                              return { ...l, spells: newSpells };
-                            });
-                            handleUpdate('spellLevels', newSpellLevels);
-                          }}
-                        />
-                        <button
-                          onClick={() => {
-                            // FIXED: Immutable deletion
-                            const newSpellLevels = character.spellLevels.map((l, i) => {
-                              if (i !== idx) return l;
-                              return { ...l, spells: l.spells.filter((_, spI) => spI !== spellIdx) };
-                            });
-                            handleUpdate('spellLevels', newSpellLevels);
-                          }}
-                          className="text-red-900 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      </div>
-                    ))}
+                    {lvl.spells.map((s, spellIdx) => {
+                      const spellData = SPELL_DATABASE.find(sp => sp.name === s);
+                      const isClassMatch = !spellData || !character.className || spellData.classes.includes(character.className);
+                      return (
+                        <div key={spellIdx} className="flex items-center gap-2 group">
+                          {spellData ? (
+                            <BadgeTooltip
+                              tooltip={`${spellData.name} (${spellData.label})\n${spellData.school} · Level ${spellData.level}\nThời gian: ${spellData.castingTime} · Tầm: ${spellData.range}\nThời lượng: ${spellData.duration}${spellData.concentration ? ' (Concentration)' : ''}\nThành phần: ${spellData.components}\nClass: ${spellData.classes.join(', ')}${!isClassMatch ? '\n\n⚠ Phép này không thuộc class của bạn!' : ''}\n\n${spellData.description}`}
+                              className={`flex-1 text-xs py-1 border-b border-dragon-800 hover:text-dragon-gold transition-colors ${isClassMatch ? 'text-gray-300' : 'text-orange-400/70'}`}
+                            >
+                              {s} <span className="text-gray-600">({spellData.label})</span>
+                              {!isClassMatch && <span className="text-orange-400 text-[9px] ml-1">không thuộc class</span>}
+                            </BadgeTooltip>
+                          ) : (
+                            <input
+                              className="flex-1 bg-transparent text-xs text-gray-300 py-1 border-b border-dragon-800 focus:border-dragon-gold outline-none focus:text-white"
+                              value={s}
+                              onChange={(e) => {
+                                const newSpellLevels = character.spellLevels.map((l, i) => {
+                                  if (i !== idx) return l;
+                                  const newSpells = [...l.spells];
+                                  newSpells[spellIdx] = e.target.value;
+                                  return { ...l, spells: newSpells };
+                                });
+                                handleUpdate('spellLevels', newSpellLevels);
+                              }}
+                            />
+                          )}
+                          <button
+                            onClick={() => {
+                              const newSpellLevels = character.spellLevels.map((l, i) => {
+                                if (i !== idx) return l;
+                                return { ...l, spells: l.spells.filter((_, spI) => spI !== spellIdx) };
+                              });
+                              handleUpdate('spellLevels', newSpellLevels);
+                            }}
+                            className="text-red-900 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
