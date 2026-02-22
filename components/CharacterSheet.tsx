@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Character, TabType, AbilityScore, DataOption, CharacterWeapon } from '../types';
-import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE } from '../constants';
+import { Character, TabType, AbilityScore, DataOption, CharacterWeapon, AsiChoice } from '../types';
+import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE, ASI_LEVELS, ABILITY_KEYS, ABILITY_LABELS } from '../constants';
 import { SPELL_DATABASE } from '../data/spells';
 import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
@@ -182,6 +182,7 @@ const SelectWithInfo: React.FC<{
 
 const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   const [activeTab, setActiveTab] = React.useState<TabType>('combat');
+  const [editingASI, setEditingASI] = useState<string | null>(null);
   const [showWeaponMenu, setShowWeaponMenu] = useState(false);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
   const [openSpellLevel, setOpenSpellLevel] = useState<number | null>(null);
@@ -189,14 +190,37 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
   // Xác định Class hiện tại để lấy thông tin auto-lock
   const currentClassData = CLASSES_VN.find(c => c.value === character.className);
+
+  // Provide effective stats including racial bonuses and ASI
+  const effectiveStats = (() => {
+    const res = {} as Record<string, AbilityScore>;
+    ABILITY_KEYS.forEach(key => {
+      let score = Number(character.stats[key as keyof typeof character.stats]?.score) || 10;
+
+      score += Number(character.racialBonuses?.[key]) || 0;
+
+      if (character.asiChoices) {
+        Object.values(character.asiChoices).forEach((choice: any) => {
+          if (choice.type === 'asi') {
+            if (choice.ability1 === key) score += Number(choice.amount1) || 0;
+            if (choice.ability2 === key) score += Number(choice.amount2) || 0;
+          }
+        });
+      }
+
+      const modifier = Math.floor((score - 10) / 2);
+      res[key] = { score, modifier };
+    });
+    return res;
+  })();
   const filteredSubclasses = SUBCLASSES_VN.filter(s => s.className === character.className);
   const currentArmor = ARMOR_VN.find(a => a.value === character.armorWorn);
 
   // Auto-calculate AC based on armor, shield, and class features
   const calculateAC = (): number => {
-    const dexMod = character.stats.dex.modifier;
-    const conMod = character.stats.con.modifier;
-    const wisMod = character.stats.wis.modifier;
+    const dexMod = effectiveStats.dex.modifier;
+    const conMod = effectiveStats.con.modifier;
+    const wisMod = effectiveStats.wis.modifier;
     const shieldBonus = character.shieldEquipped ? 2 : 0;
 
     // No armor equipped
@@ -238,7 +262,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     if (newAC !== character.ac) {
       handleUpdate('ac', newAC);
     }
-  }, [character.armorWorn, character.shieldEquipped, character.stats.dex, character.stats.con, character.stats.wis, character.className]);
+  }, [character.armorWorn, character.shieldEquipped, effectiveStats, character.className]);
 
   const getModStr = (mod: number) => (mod >= 0 ? `+${mod}` : mod.toString());
 
@@ -286,7 +310,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
       // 3. Cập nhật Hit Dice & HP Max (Gợi ý)
       if (classData.hitDie) {
         const dieValue = parseInt(classData.hitDie.substring(1)); // Lấy số từ "d10" -> 10
-        const conMod = character.stats.con.modifier;
+        const conMod = effectiveStats.con.modifier;
 
         // Level 1: Max Die + Con Mod
         // Level > 1: Giả sử lấy trung bình (Die/2 + 1) + Con Mod cho mỗi level thêm
@@ -377,8 +401,8 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   // === Hệ thống vũ khí tự động ===
 
   const getWeaponAbilityMod = (weaponData: typeof WEAPON_DATABASE[0]): number => {
-    const strMod = character.stats.str.modifier;
-    const dexMod = character.stats.dex.modifier;
+    const strMod = effectiveStats.str.modifier;
+    const dexMod = effectiveStats.dex.modifier;
     const isFinesse = weaponData.properties.includes('Finesse');
     const isRanged = weaponData.type === 'Ranged';
 
@@ -441,7 +465,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
       w.damageFormula !== character.weapons[i].damageFormula
     );
     if (changed) handleUpdate('weapons', updated);
-  }, [character.stats, character.proficiencyBonus, character.className]);
+  }, [effectiveStats, character.weapons.length, character.proficiencyBonus, character.className]);
 
   const addSpell = (levelIdx: number, spellName: string) => {
     const newSpellLevels = character.spellLevels.map((lvl, idx) => {
@@ -605,22 +629,298 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
             <div className="lg:col-span-2 flex flex-col gap-4">
               {(Object.entries(character.stats) as [string, AbilityScore][]).map(([key, val]) => {
                 const abilityInfo = ABILITY_INFO[key];
+                const racialBonus = character.racialBonuses?.[key] || 0;
                 return (
                   <div key={key} className="bg-dragon-900 border-2 border-dragon-600 rounded-2xl p-2 flex flex-col items-center shadow-inner group hover:border-dragon-gold transition-colors relative">
                     <div className="flex items-center justify-center w-full gap-1">
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{abilityInfo.label}</span>
                       <div className="shrink-0"><InfoTooltip content={`${abilityInfo.eng}: ${abilityInfo.desc}`} /></div>
                     </div>
-                    <span className="text-3xl font-fantasy font-bold text-white my-1">{getModStr(val.modifier)}</span>
+                    <span className="text-3xl font-fantasy font-bold text-white my-1">{getModStr(effectiveStats[key].modifier)}</span>
                     <input
                       type="number"
                       className="bg-dragon-800 rounded-full w-12 text-center border border-dragon-700 text-xs font-bold text-dragon-gold focus:outline-none focus:border-dragon-gold"
                       value={val.score}
                       onChange={(e) => updateStat(key as any, parseInt(e.target.value) || 0)}
                     />
+                    {/* Racial Bonus Badge */}
+                    {racialBonus > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-yellow-600 text-black text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md">
+                        +{racialBonus}
+                      </span>
+                    )}
                   </div>
                 );
               })}
+
+              {/* Racial Bonus Picker */}
+              <div className="bg-dragon-900/40 border border-dragon-700 rounded-lg px-2 py-1.5">
+                <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest text-center mb-1">
+                  Racial Bonus
+                </div>
+                <div className="grid grid-cols-6 gap-0.5">
+                  {ABILITY_KEYS.map(key => {
+                    const bonus = character.racialBonuses?.[key] || 0;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          const next = bonus >= 2 ? 0 : bonus + 1;
+                          const newBonuses = { ...(character.racialBonuses || {}) };
+                          if (next === 0) {
+                            delete newBonuses[key];
+                          } else {
+                            newBonuses[key] = next;
+                          }
+                          handleUpdate('racialBonuses', newBonuses);
+                        }}
+                        className={`flex flex-col items-center py-0.5 rounded transition-all ${bonus > 0
+                          ? 'bg-yellow-600/20 border border-yellow-500/40 text-yellow-400'
+                          : 'border border-transparent text-gray-500 hover:text-gray-300'
+                          }`}
+                      >
+                        <span className="text-[7px] uppercase font-bold">{ABILITY_LABELS[key]}</span>
+                        <span className="text-[10px] font-black">{bonus > 0 ? `+${bonus}` : '·'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(() => {
+                  const total = (Object.values(character.racialBonuses || {}) as number[]).reduce((s: number, v: number) => s + v, 0);
+                  return (
+                    <div className={`text-[8px] text-center mt-0.5 ${total > 3 ? 'text-red-400' : total === 3 ? 'text-green-400' : 'text-gray-500'}`}>
+                      {total}/3 điểm {total > 3 && '⚠ vượt!'}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Point Buy Hint */}
+              {(() => {
+                const POINT_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+                const scores = (Object.values(character.stats) as AbilityScore[]).map(s => s.score);
+                let totalCost = 0;
+                let hasInvalid = false;
+                scores.forEach(s => {
+                  if (s >= 8 && s <= 15) {
+                    totalCost += POINT_COST[s] || 0;
+                  } else if (s < 8) {
+                    hasInvalid = true;
+                  } else {
+                    // >15: tính cost của 15 + extra (hint only)
+                    totalCost += 9;
+                    hasInvalid = true;
+                  }
+                });
+                const remaining = 27 - totalCost;
+                const isOver = remaining < 0;
+
+                return (
+                  <div className="bg-dragon-900/40 border border-dragon-700 rounded-lg px-2 py-1.5">
+                    <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest text-center mb-1">
+                      Point Buy
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-gray-400">Còn lại:</span>
+                      <span className={`text-sm font-bold font-fantasy ${isOver ? 'text-red-400' : remaining === 0 ? 'text-green-400' : 'text-dragon-gold'}`}>
+                        {remaining}
+                      </span>
+                      <span className="text-[9px] text-gray-500">/27</span>
+                    </div>
+                    {/* Per-stat cost breakdown */}
+                    <div className="grid grid-cols-6 gap-0.5 mt-1">
+                      {(Object.entries(character.stats) as [string, AbilityScore][]).map(([key, val]) => {
+                        const cost = POINT_COST[val.score];
+                        const invalid = val.score < 8;
+                        return (
+                          <div key={key} className="text-center">
+                            <div className="text-[7px] text-gray-500 uppercase">{key}</div>
+                            <div className={`text-[9px] font-bold ${invalid ? 'text-red-400' : cost !== undefined ? 'text-gray-300' : 'text-yellow-500'}`}>
+                              {invalid ? '!' : cost !== undefined ? cost : '9+'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {hasInvalid && (
+                      <div className="text-[8px] text-yellow-500/70 text-center mt-0.5">
+                        ⚠ Ngoài 8–15
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ASI Tracker */}
+              {(() => {
+                const asiLevels = ASI_LEVELS[character.className] || ASI_LEVELS['Barbarian'] || [4, 8, 12, 16, 19];
+                const availableASIs = asiLevels.filter(l => l <= character.level);
+                if (availableASIs.length === 0 || !character.className) return null;
+
+                return (
+                  <div className="bg-dragon-900/60 border border-dragon-700 rounded-xl p-2 mt-1">
+                    <div className="text-[9px] font-bold text-dragon-gold uppercase tracking-widest text-center mb-1.5">
+                      ASI / Feat
+                    </div>
+                    <div className="space-y-1.5">
+                      {availableASIs.map(lvl => {
+                        const key = String(lvl);
+                        const choice = character.asiChoices?.[key];
+
+                        // Completed choice — compact badge
+                        if (choice && editingASI !== key) {
+                          let label = '';
+                          if (choice.type === 'asi') {
+                            if (choice.ability2) {
+                              label = `+1 ${ABILITY_LABELS[choice.ability1 || ''] || '?'} / +1 ${ABILITY_LABELS[choice.ability2] || '?'}`;
+                            } else {
+                              label = `+${choice.amount1 || 2} ${ABILITY_LABELS[choice.ability1 || ''] || '?'}`;
+                            }
+                          } else {
+                            label = choice.featName || 'Feat';
+                          }
+
+                          return (
+                            <button
+                              key={lvl}
+                              onClick={() => setEditingASI(key)}
+                              className="w-full flex items-center justify-between gap-1 px-2 py-1 rounded-md bg-dragon-gold/10 border border-dragon-gold/30 hover:border-dragon-gold/60 transition-all text-left"
+                            >
+                              <span className="text-[9px] font-bold text-gray-400">Lv{lvl}</span>
+                              <span className="text-[10px] font-bold text-dragon-gold truncate flex-1 text-right">{label}</span>
+                            </button>
+                          );
+                        }
+
+                        // Editing or empty — show editor
+                        return (
+                          <div key={lvl} className="rounded-md border border-dragon-600 bg-dragon-800/80 p-1.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[9px] font-bold text-gray-400">Lv{lvl}</span>
+                              {editingASI === key && (
+                                <button
+                                  onClick={() => setEditingASI(null)}
+                                  className="text-[8px] text-gray-500 hover:text-white"
+                                >✕</button>
+                              )}
+                            </div>
+
+                            {/* Mode selector */}
+                            <div className="flex gap-1 mb-1">
+                              <button
+                                onClick={() => {
+                                  handleUpdate('asiChoices', {
+                                    ...(character.asiChoices || {}),
+                                    [key]: { type: 'asi', ability1: 'str', amount1: 2 }
+                                  });
+                                }}
+                                className="flex-1 text-[9px] py-0.5 rounded bg-blue-900/40 border border-blue-700/50 text-blue-300 hover:bg-blue-800/60 transition-colors font-bold"
+                              >+2</button>
+                              <button
+                                onClick={() => {
+                                  handleUpdate('asiChoices', {
+                                    ...(character.asiChoices || {}),
+                                    [key]: { type: 'asi', ability1: 'str', amount1: 1, ability2: 'con', amount2: 1 }
+                                  });
+                                }}
+                                className="flex-1 text-[9px] py-0.5 rounded bg-green-900/40 border border-green-700/50 text-green-300 hover:bg-green-800/60 transition-colors font-bold"
+                              >+1/+1</button>
+                              <button
+                                onClick={() => {
+                                  handleUpdate('asiChoices', {
+                                    ...(character.asiChoices || {}),
+                                    [key]: { type: 'feat', featName: '' }
+                                  });
+                                }}
+                                className="flex-1 text-[9px] py-0.5 rounded bg-purple-900/40 border border-purple-700/50 text-purple-300 hover:bg-purple-800/60 transition-colors font-bold"
+                              >Feat</button>
+                            </div>
+
+                            {/* Detail editor based on type */}
+                            {choice?.type === 'asi' && !choice.ability2 && (
+                              <select
+                                value={choice.ability1 || 'str'}
+                                onChange={(e) => {
+                                  handleUpdate('asiChoices', {
+                                    ...(character.asiChoices || {}),
+                                    [key]: { ...choice, ability1: e.target.value, amount1: 2 }
+                                  });
+                                }}
+                                className="w-full bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1 py-0.5"
+                              >
+                                {ABILITY_KEYS.map(a => (
+                                  <option key={a} value={a}>{ABILITY_LABELS[a]}</option>
+                                ))}
+                              </select>
+                            )}
+
+                            {choice?.type === 'asi' && choice.ability2 && (
+                              <div className="flex gap-1">
+                                <select
+                                  value={choice.ability1 || 'str'}
+                                  onChange={(e) => {
+                                    handleUpdate('asiChoices', {
+                                      ...(character.asiChoices || {}),
+                                      [key]: { ...choice, ability1: e.target.value }
+                                    });
+                                  }}
+                                  className="flex-1 bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1 py-0.5"
+                                >
+                                  {ABILITY_KEYS.map(a => (
+                                    <option key={a} value={a}>{ABILITY_LABELS[a]}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={choice.ability2 || 'con'}
+                                  onChange={(e) => {
+                                    handleUpdate('asiChoices', {
+                                      ...(character.asiChoices || {}),
+                                      [key]: { ...choice, ability2: e.target.value }
+                                    });
+                                  }}
+                                  className="flex-1 bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1 py-0.5"
+                                >
+                                  {ABILITY_KEYS.map(a => (
+                                    <option key={a} value={a}>{ABILITY_LABELS[a]}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            {choice?.type === 'feat' && (
+                              <input
+                                type="text"
+                                placeholder="Tên feat..."
+                                value={choice.featName || ''}
+                                onChange={(e) => {
+                                  handleUpdate('asiChoices', {
+                                    ...(character.asiChoices || {}),
+                                    [key]: { ...choice, featName: e.target.value }
+                                  });
+                                }}
+                                className="w-full bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1.5 py-0.5 placeholder-gray-600"
+                              />
+                            )}
+
+                            {/* Clear button */}
+                            {choice && (
+                              <button
+                                onClick={() => {
+                                  const newChoices = { ...(character.asiChoices || {}) };
+                                  delete newChoices[key];
+                                  handleUpdate('asiChoices', newChoices);
+                                  setEditingASI(null);
+                                }}
+                                className="w-full text-[8px] text-gray-500 hover:text-red-400 mt-0.5 transition-colors"
+                              >Xóa</button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Cột 2: Kĩ năng phòng thủ & Kĩ năng */}
@@ -646,7 +946,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                           <div className="shrink-0"><InfoTooltip content={`${abilityInfo.eng} Saving Throw: Khả năng chống lại các hiệu ứng cần dùng ${abilityInfo.label} (${abilityInfo.desc}).`} /></div>
                         </div>
                         <span className="font-mono text-white">
-                          {getModStr(character.stats[s as keyof typeof character.stats].modifier + (character.savingThrows.includes(s) ? character.proficiencyBonus : 0))}
+                          {getModStr(effectiveStats[s].modifier + (character.savingThrows.includes(s) ? character.proficiencyBonus : 0))}
                         </span>
                       </div>
                     );
@@ -676,7 +976,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     <InfoTooltip content={`Passive Perception = 10 + WIS modifier${character.skills.find(s => s.name === 'Quan Sát')?.proficient ? ' + Proficiency' : ''}. DM dùng để kiểm tra xem nhân vật có nhận ra mối nguy hiểm, bẫy, hoặc kẻ thù lén lút mà không cần roll.`} />
                   </div>
                   <span className="text-xl font-bold text-dragon-gold font-mono">
-                    {10 + character.stats.wis.modifier + (character.skills.find(s => s.name === 'Quan Sát')?.proficient ? character.proficiencyBonus : 0)}
+                    {10 + effectiveStats.wis.modifier + (character.skills.find(s => s.name === 'Quan Sát')?.proficient ? character.proficiencyBonus : 0)}
                   </span>
                 </div>
               </div>
@@ -702,7 +1002,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                           {skillInfo && <div className="shrink-0"><InfoTooltip content={`${skillInfo.eng}: ${skillInfo.desc}`} /></div>}
                         </div>
                         <span className="text-dragon-gold font-bold shrink-0">
-                          {getModStr(character.stats[skill.ability as keyof typeof character.stats].modifier + (skill.proficient ? character.proficiencyBonus : 0))}
+                          {getModStr(effectiveStats[skill.ability].modifier + (skill.proficient ? character.proficiencyBonus : 0))}
                         </span>
                       </div>
                     );
@@ -764,7 +1064,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     {currentArmor?.stealthDisadvantage && (
                       <span className="text-[10px] text-yellow-500 mt-1">⚠️ Stealth Disadvantage</span>
                     )}
-                    {currentArmor?.strRequirement && character.stats.str.score < currentArmor.strRequirement && (
+                    {currentArmor?.strRequirement && effectiveStats.str.score < currentArmor.strRequirement && (
                       <span className="text-[10px] text-red-400 mt-1">❌ Cần Str {currentArmor.strRequirement}+</span>
                     )}
                   </div>
@@ -833,7 +1133,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   const hitDie = classData?.hitDie;
                   if (!hitDie) return null;
                   const dieValue = parseInt(hitDie.substring(1));
-                  const conMod = character.stats.con.modifier;
+                  const conMod = effectiveStats.con.modifier;
                   const avgRoll = Math.floor(dieValue / 2) + 1;
                   const avgGain = Math.max(1, avgRoll + conMod);
 
@@ -983,10 +1283,10 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             </div>
                           </div>
                           <div className="text-center px-2">
-                            <div className="text-dragon-gold font-bold text-lg font-mono">
-                              {cw.attackBonus >= 0 ? '+' : ''}{cw.attackBonus}
+                            <div className="text-dragon-gold font-bold text-lg font-mono whitespace-nowrap">
+                              1d20{cw.attackBonus >= 0 ? '+' : ''}{cw.attackBonus}
                             </div>
-                            <div className="text-[8px] text-gray-500 uppercase">Atk</div>
+                            <div className="text-[8px] text-gray-500 uppercase">Roll Atk</div>
                           </div>
                           <div className="text-center px-2">
                             <div className="text-white font-bold text-sm font-mono">{cw.damageFormula}</div>
@@ -1320,8 +1620,8 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                                   handleUpdate('featureChoices', newChoices);
                                 }}
                                 className={`w-full flex items-start gap-2 text-left px-2 py-1 rounded transition-all text-[11px] ${isSelected
-                                    ? 'bg-dragon-gold/10 border border-dragon-gold/40 text-dragon-gold'
-                                    : 'hover:bg-dragon-800/50 text-gray-400 border border-transparent'
+                                  ? 'bg-dragon-gold/10 border border-dragon-gold/40 text-dragon-gold'
+                                  : 'hover:bg-dragon-800/50 text-gray-400 border border-transparent'
                                   }`}
                               >
                                 <span className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-dragon-gold bg-dragon-gold/20' : 'border-gray-600'
@@ -1479,7 +1779,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
               };
               const spellAbilityKey = CLASS_SPELL_ABILITY[character.className] || '';
               const spellAbilityLabel = ABILITY_LABELS[spellAbilityKey] || '—';
-              const statObj = spellAbilityKey ? (character.stats as any)[spellAbilityKey] : null;
+              const statObj = spellAbilityKey ? (effectiveStats as any)[spellAbilityKey] : null;
               const abilityScore = statObj ? (typeof statObj === 'object' ? statObj.score : statObj) || 10 : 10;
               const abilityMod = Math.floor((abilityScore - 10) / 2);
               const spellSaveDC = spellAbilityKey ? 8 + character.proficiencyBonus + abilityMod : 0;

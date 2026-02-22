@@ -33,6 +33,22 @@ function saveProfiles(profiles: SavedProfile[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
 }
 
+// Migrate old saved characters to include new fields
+function migrateCharacter(c: any): Character {
+  return {
+    ...BLANK_CHARACTER_VN,
+    ...c,
+    // Ensure all new fields have defaults if missing
+    feats: c.feats ?? [],
+    featureChoices: c.featureChoices ?? {},
+    asiChoices: c.asiChoices ?? {},
+    racialBonuses: c.racialBonuses ?? {},
+    armorWorn: c.armorWorn ?? '',
+    shieldEquipped: c.shieldEquipped ?? false,
+    playerName: c.playerName ?? '',
+  };
+}
+
 const App: React.FC = () => {
   const [profiles, setProfiles] = useState<SavedProfile[]>(() => loadProfiles());
   const [activeProfileId, setActiveProfileId] = useState<string | null>(() => {
@@ -44,12 +60,12 @@ const App: React.FC = () => {
     if (activeId) {
       const profs = loadProfiles();
       const found = profs.find(p => p.id === activeId);
-      if (found) return found.character;
+      if (found) return migrateCharacter(found.character);
     }
     // Try autosave
     try {
       const auto = localStorage.getItem(AUTOSAVE_KEY);
-      if (auto) return JSON.parse(auto);
+      if (auto) return migrateCharacter(JSON.parse(auto));
     } catch { }
     return BLANK_CHARACTER_VN;
   });
@@ -109,7 +125,7 @@ const App: React.FC = () => {
   };
 
   const handleLoadProfile = (profile: SavedProfile) => {
-    setCharacter(profile.character);
+    setCharacter(migrateCharacter(profile.character));
     setActiveProfileId(profile.id);
     localStorage.setItem(ACTIVE_KEY, profile.id);
     setShowProfileMenu(false);
@@ -174,7 +190,7 @@ const App: React.FC = () => {
       reader.onload = (ev) => {
         try {
           const imported = JSON.parse(ev.target?.result as string) as Character;
-          setCharacter(imported);
+          setCharacter(migrateCharacter(imported));
           setActiveProfileId(null);
           localStorage.removeItem(ACTIVE_KEY);
         } catch {

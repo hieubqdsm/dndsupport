@@ -86,6 +86,15 @@ export interface Feat {
   description: string;
 }
 
+export interface AsiChoice {
+  type: 'asi' | 'feat';
+  ability1?: string;  // e.g. 'str', 'dex'
+  amount1?: number;   // +1 or +2
+  ability2?: string;  // for +1/+1 split
+  amount2?: number;
+  featName?: string;
+}
+
 export interface Character {
   // Trang 1: Thông tin cơ bản & Chiến đấu
   name: string;
@@ -103,6 +112,8 @@ export interface Character {
   shieldEquipped: boolean; // Có cầm shield không (+2 AC)
   feats: string[];         // Danh sách feats đã chọn
   featureChoices: Record<string, string>; // Feature name → selected option (e.g. "Fighting Style" → "Archery")
+  asiChoices: Record<string, AsiChoice>; // Level string → ASI choice at that level
+  racialBonuses: Record<string, number>; // e.g. { str: 2, dex: 1 } for +2 STR / +1 DEX
 
   stats: {
     str: AbilityScore;

@@ -28,6 +28,28 @@ export const WEAPONS_VN: DataOption[] = WEAPON_DATABASE.map(w => ({
 
 export const DICE_TYPES = [4, 6, 8, 10, 12, 20, 100];
 
+// ASI levels per class (D&D 5e PHB)
+export const ASI_LEVELS: Record<string, number[]> = {
+  Fighter: [4, 6, 8, 12, 14, 16, 19],
+  Rogue: [4, 8, 10, 12, 16, 19],
+  // All other classes
+  Barbarian: [4, 8, 12, 16, 19],
+  Bard: [4, 8, 12, 16, 19],
+  Cleric: [4, 8, 12, 16, 19],
+  Druid: [4, 8, 12, 16, 19],
+  Monk: [4, 8, 12, 16, 19],
+  Paladin: [4, 8, 12, 16, 19],
+  Ranger: [4, 8, 12, 16, 19],
+  Sorcerer: [4, 8, 12, 16, 19],
+  Warlock: [4, 8, 12, 16, 19],
+  Wizard: [4, 8, 12, 16, 19],
+};
+
+export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+export const ABILITY_LABELS: Record<string, string> = {
+  str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA'
+};
+
 // --- Character Templates ---
 const emptySpellLevels = Array.from({ length: 10 }, (_, i) => ({
   level: i,
@@ -50,6 +72,8 @@ export const BLANK_CHARACTER_VN: Character = {
   shieldEquipped: false,
   feats: [],
   featureChoices: {},
+  asiChoices: {},
+  racialBonuses: {},
   stats: {
     str: { score: 10, modifier: 0 },
     dex: { score: 10, modifier: 0 },
