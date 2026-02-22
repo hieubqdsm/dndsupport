@@ -49,6 +49,7 @@ export const BLANK_CHARACTER_VN: Character = {
   armorWorn: "",
   shieldEquipped: false,
   feats: [],
+  featureChoices: {},
   stats: {
     str: { score: 10, modifier: 0 },
     dex: { score: 10, modifier: 0 },

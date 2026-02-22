@@ -1,55 +1,62 @@
 <!DOCTYPE html>
 <html lang="vi">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DragonScroll D&D</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              dragon: {
-                900: '#1a1d23',
-                800: '#232730',
-                700: '#2d3342',
-                600: '#4a5568',
-                500: '#718096',
-                gold: '#fbbf24',
-                red: '#ef4444',
-                accent: '#3b82f6'
-              }
-            },
-            fontFamily: {
-              fantasy: ['Cinzel', 'serif'],
-              sans: ['Inter', 'sans-serif']
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DragonScroll D&D</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dragon: {
+              900: '#1a1d23',
+              800: '#232730',
+              700: '#2d3342',
+              600: '#4a5568',
+              500: '#718096',
+              gold: '#fbbf24',
+              red: '#ef4444',
+              accent: '#3b82f6'
             }
+          },
+          fontFamily: {
+            fantasy: ['"EB Garamond"', 'serif'],
+            sans: ['Inter', 'sans-serif']
           }
         }
       }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-      body {
-        background-color: #111827;
-        color: #e5e7eb;
-      }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #1a1d23;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #4a5568;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #718096;
-      }
-    </style>
+    }
+  </script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      background-color: #111827;
+      color: #e5e7eb;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1a1d23;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #4a5568;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #718096;
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -62,10 +69,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body>
-    <div id="root"></div>
+
+<body>
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

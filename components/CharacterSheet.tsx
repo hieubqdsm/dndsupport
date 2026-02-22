@@ -1277,25 +1277,70 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   'Passive': 'bg-green-900/50 text-green-300 border-green-700',
                   'Special': 'bg-yellow-900/50 text-yellow-300 border-yellow-700',
                 };
-                const renderFeature = (f: ClassFeature) => (
-                  <div key={f.name + f.subclass} className="bg-dragon-950/50 border border-dragon-800 rounded-lg p-3 hover:border-dragon-gold/30 transition-colors">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-white">{f.name}</span>
-                        <span className="text-[10px] text-gray-500">({f.label})</span>
-                        <span className="text-[9px] text-dragon-gold/60">Lv{f.level}</span>
+                const renderFeature = (f: ClassFeature) => {
+                  // Detect if description has choices (bullet points with •)
+                  const lines = f.description.split('\n');
+                  const hasChoices = lines.some(l => l.trim().startsWith('•'));
+                  const introLines = lines.filter(l => !l.trim().startsWith('•'));
+                  const choiceLines = lines.filter(l => l.trim().startsWith('•'));
+                  const selectedChoice = character.featureChoices?.[f.name] || '';
+
+                  return (
+                    <div key={f.name + f.subclass} className="bg-dragon-950/50 border border-dragon-800 rounded-lg p-3 hover:border-dragon-gold/30 transition-colors">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-white">{f.name}</span>
+                          <span className="text-[10px] text-gray-500">({f.label})</span>
+                          <span className="text-[9px] text-dragon-gold/60">Lv{f.level}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {f.actionType && <span className={`text-[9px] px-1.5 py-0.5 rounded border ${actionColors[f.actionType] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>{f.actionType}</span>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {f.actionType && <span className={`text-[9px] px-1.5 py-0.5 rounded border ${actionColors[f.actionType] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>{f.actionType}</span>}
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        {f.dice && <span className="text-[10px] bg-red-900/40 text-red-300 border border-red-800 px-1.5 py-0.5 rounded">🎲 {f.dice}</span>}
+                        {f.usesPerRest && <span className="text-[10px] bg-cyan-900/40 text-cyan-300 border border-cyan-800 px-1.5 py-0.5 rounded">⟳ {f.usesPerRest}</span>}
                       </div>
+                      {/* Intro text (non-bullet lines) */}
+                      {introLines.length > 0 && (
+                        <p className="text-[11px] text-gray-400 leading-relaxed mb-1">{introLines.join('\n')}</p>
+                      )}
+                      {/* Choice bullets as clickable checkboxes */}
+                      {hasChoices && (
+                        <div className="space-y-0.5 mt-1">
+                          {choiceLines.map((line) => {
+                            const cleanLine = line.trim().replace(/^•\s*/, '');
+                            const optionName = cleanLine.split(':')[0].trim();
+                            const isSelected = selectedChoice === optionName;
+                            return (
+                              <button
+                                key={optionName}
+                                onClick={() => {
+                                  const newChoices = { ...(character.featureChoices || {}), [f.name]: isSelected ? '' : optionName };
+                                  handleUpdate('featureChoices', newChoices);
+                                }}
+                                className={`w-full flex items-start gap-2 text-left px-2 py-1 rounded transition-all text-[11px] ${isSelected
+                                    ? 'bg-dragon-gold/10 border border-dragon-gold/40 text-dragon-gold'
+                                    : 'hover:bg-dragon-800/50 text-gray-400 border border-transparent'
+                                  }`}
+                              >
+                                <span className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-dragon-gold bg-dragon-gold/20' : 'border-gray-600'
+                                  }`}>
+                                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-dragon-gold" />}
+                                </span>
+                                <span className={isSelected ? 'font-semibold' : ''}>{cleanLine}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Non-choice features: plain text */}
+                      {!hasChoices && introLines.length === 0 && (
+                        <p className="text-[11px] text-gray-400 leading-relaxed whitespace-pre-line">{f.description}</p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      {f.dice && <span className="text-[10px] bg-red-900/40 text-red-300 border border-red-800 px-1.5 py-0.5 rounded">🎲 {f.dice}</span>}
-                      {f.usesPerRest && <span className="text-[10px] bg-cyan-900/40 text-cyan-300 border border-cyan-800 px-1.5 py-0.5 rounded">⟳ {f.usesPerRest}</span>}
-                    </div>
-                    <p className="text-[11px] text-gray-400 leading-relaxed whitespace-pre-line">{f.description}</p>
-                  </div>
-                );
+                  );
+                };
                 return activeFeats.length > 0 ? (
                   <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
                     <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Class & Subclass Features — Lv{character.level}</h3>

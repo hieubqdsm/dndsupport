@@ -4,7 +4,8 @@ import { Character } from './types';
 import { BLANK_CHARACTER_VN } from './constants';
 import CharacterSheet from './components/CharacterSheet';
 import DiceRoller from './components/DiceRoller';
-import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload } from 'lucide-react';
+import MonsterManual from './components/MonsterManual';
+import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull } from 'lucide-react';
 
 const STORAGE_KEY = 'dragonscroll_profiles';
 const ACTIVE_KEY = 'dragonscroll_active';
@@ -54,6 +55,7 @@ const App: React.FC = () => {
   });
 
   const [showDice, setShowDice] = useState(false);
+  const [showMonster, setShowMonster] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
@@ -208,6 +210,13 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
+              <button
+                onClick={() => setShowMonster(true)}
+                title="Sổ Tay Quái Vật"
+                className="p-2 rounded-md text-gray-500 hover:text-red-400 hover:bg-dragon-800 transition-all border border-transparent"
+              >
+                <Skull className="w-5 h-5" />
+              </button>
 
               {/* Profile Manager */}
               <div className="relative" ref={profileMenuRef}>
@@ -375,6 +384,7 @@ const App: React.FC = () => {
       </div>
 
       <DiceRoller isOpen={showDice} onClose={() => setShowDice(false)} />
+      <MonsterManual isOpen={showMonster} onClose={() => setShowMonster(false)} />
 
     </div>
   );

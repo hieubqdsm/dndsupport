@@ -102,6 +102,7 @@ export interface Character {
   armorWorn: string;       // Tên armor đang mặc (rỗng = không mặc)
   shieldEquipped: boolean; // Có cầm shield không (+2 AC)
   feats: string[];         // Danh sách feats đã chọn
+  featureChoices: Record<string, string>; // Feature name → selected option (e.g. "Fighting Style" → "Archery")
 
   stats: {
     str: AbilityScore;
