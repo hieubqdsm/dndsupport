@@ -222,3 +222,18 @@ export interface Monster {
   legendaryActions?: MonsterAction[];
   description?: string; // Flavor text
 }
+
+export interface Combatant {
+  id: string; // unique uuid cho trận đánh
+  type: 'player' | 'monster';
+  sourceId: string; // id của profile hoặc value của quái
+  name: string;
+  initiative: number; // Mặc định là 0, DM nhập tay vào
+  hp: {
+    current: number;
+    max: number;
+    temp: number;
+  };
+  ac: number;
+  initiativeBonus: number; // Dex modifier để auto-roll (nếu cần)
+}

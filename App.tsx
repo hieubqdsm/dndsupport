@@ -5,7 +5,8 @@ import { BLANK_CHARACTER_VN } from './constants';
 import CharacterSheet from './components/CharacterSheet';
 import DiceRoller from './components/DiceRoller';
 import MonsterManual from './components/MonsterManual';
-import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull } from 'lucide-react';
+import EncounterTracker from './components/EncounterTracker';
+import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull, Users } from 'lucide-react';
 
 const STORAGE_KEY = 'dragonscroll_profiles';
 const ACTIVE_KEY = 'dragonscroll_active';
@@ -75,6 +76,7 @@ const App: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
+  const [currentView, setCurrentView] = useState<'character' | 'encounter'>('character');
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   // Autosave character on every change
@@ -234,6 +236,28 @@ const App: React.FC = () => {
                 <Skull className="w-5 h-5" />
               </button>
 
+              {/* View Toggle */}
+              <div className="hidden sm:flex bg-dragon-800/80 rounded-lg p-1 border border-dragon-700">
+                <button
+                  onClick={() => setCurrentView('character')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'character'
+                    ? 'bg-dragon-900 text-dragon-gold shadow-md border border-dragon-600'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  <Sword className="w-4 h-4" /> Sổ Nhân Vật
+                </button>
+                <button
+                  onClick={() => setCurrentView('encounter')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'encounter'
+                    ? 'bg-dragon-900 text-dragon-gold shadow-md border border-dragon-600'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  <Users className="w-4 h-4" /> Giả Lập Combat
+                </button>
+              </div>
+
               {/* Profile Manager */}
               <div className="relative" ref={profileMenuRef}>
                 <button
@@ -386,7 +410,12 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <CharacterSheet character={character} updateCharacter={setCharacter} />
+        <div style={{ display: currentView === 'character' ? 'block' : 'none' }}>
+          <CharacterSheet character={character} updateCharacter={setCharacter} />
+        </div>
+        <div style={{ display: currentView === 'encounter' ? 'block' : 'none' }}>
+          <EncounterTracker profiles={profiles} />
+        </div>
       </main>
 
       {/* Persistent Dice Button for Mobile */}
