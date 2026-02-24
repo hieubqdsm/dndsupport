@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon, AsiChoice } from '../types';
 import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE, ASI_LEVELS, ABILITY_KEYS, ABILITY_LABELS } from '../constants';
 import { SPELL_DATABASE } from '../data/spells';
+import { FEAT_DATABASE } from '../data/feats';
 import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
 import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
 
@@ -888,9 +889,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                             )}
 
                             {choice?.type === 'feat' && (
-                              <input
-                                type="text"
-                                placeholder="Tên feat..."
+                              <select
                                 value={choice.featName || ''}
                                 onChange={(e) => {
                                   handleUpdate('asiChoices', {
@@ -898,8 +897,13 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                                     [key]: { ...choice, featName: e.target.value }
                                   });
                                 }}
-                                className="w-full bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1.5 py-0.5 placeholder-gray-600"
-                              />
+                                className="w-full bg-dragon-900 border border-dragon-700 rounded text-[10px] text-white px-1 py-0.5"
+                              >
+                                <option value="">-- Chọn Feat --</option>
+                                {FEAT_DATABASE.map(f => (
+                                  <option key={f.value} value={f.value}>{f.label}</option>
+                                ))}
+                              </select>
                             )}
 
                             {/* Clear button */}
@@ -1564,6 +1568,41 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Active Feats (from ASI choices) */}
+              {(() => {
+                const activeFeatsId = Object.values(character.asiChoices || {})
+                  .filter((c: any) => c.type === 'feat' && c.featName)
+                  .map((c: any) => c.featName as string);
+
+                if (activeFeatsId.length === 0) return null;
+
+                const featsToRender = activeFeatsId.map(id => FEAT_DATABASE.find(f => f.value === id)).filter(Boolean);
+
+                return (
+                  <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4 mb-4 mt-6">
+                    <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" /> Kỹ Năng Bổ Trợ (Feats)
+                    </h3>
+                    <div className="space-y-2">
+                      {featsToRender.map((f, idx) => (
+                        <div key={idx} className="bg-dragon-950/50 border border-dragon-800 rounded-lg p-3 hover:border-dragon-gold/30 transition-colors">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="text-xs font-bold text-white text-dragon-gold">{f?.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded border bg-purple-900/50 text-purple-300 border-purple-700">{f?.category}</span>
+                          </div>
+                          {f?.prerequisite && f.prerequisite !== 'Không có' && (
+                            <div className="text-[10px] text-red-400 italic mb-1.5">
+                              Yêu cầu: {f.prerequisite}
+                            </div>
+                          )}
+                          <p className="text-[11px] text-gray-400 leading-relaxed whitespace-pre-line mt-1">{f?.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Class & Subclass Features (Auto from Database) */}
               {(() => {
