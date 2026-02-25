@@ -167,6 +167,7 @@ export interface Character {
   spellSaveDC: number;
   spellAttackBonus: number;
   spellLevels: SpellLevel[];
+  preparedSpells: string[]; // Danh sách ID các phép đã prepare
 }
 
 export interface DiceRoll {

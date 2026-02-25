@@ -5,8 +5,9 @@ import { Character, TabType, AbilityScore, DataOption, CharacterWeapon, AsiChoic
 import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE, ASI_LEVELS, ABILITY_KEYS, ABILITY_LABELS } from '../constants';
 import { SPELL_DATABASE } from '../data/spells';
 import { FEAT_DATABASE } from '../data/feats';
+import { getSpellSlots } from '../data/spellSlots';
 import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
-import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown } from 'lucide-react';
+import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown, CheckCircle, Circle, Star } from 'lucide-react';
 
 interface Props {
   character: Character;
@@ -1824,6 +1825,8 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
               const spellSaveDC = spellAbilityKey ? 8 + character.proficiencyBonus + abilityMod : 0;
               const spellAttackBonus = spellAbilityKey ? character.proficiencyBonus + abilityMod : 0;
 
+              const computedSlots = getSpellSlots(character.className, character.subclass, character.level);
+
               return (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   {/* Khả năng dùng phép */}
@@ -1929,33 +1932,35 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   </div>
 
                   {lvl.level > 0 && (
-                    <div className="flex items-center gap-2 mb-3 bg-dragon-800 p-1 rounded">
-                      <span className="text-[9px] text-gray-500 uppercase font-bold px-1">Ô phép:</span>
-                      <input
-                        type="number"
-                        className="bg-transparent w-8 text-xs text-white text-center focus:outline-none focus:text-dragon-gold"
-                        value={lvl.slotsTotal}
-                        onChange={(e) => {
-                          // FIXED: Immutable update for slot totals
-                          const newSpellLevels = character.spellLevels.map((l, i) =>
-                            i === idx ? { ...l, slotsTotal: parseInt(e.target.value) || 0 } : l
+                    <div className="flex items-center gap-1.5 mb-3 bg-dragon-800/50 p-2 rounded justify-center">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold mr-1">Slots:</span>
+                      {(() => {
+                        const computedSlots = getSpellSlots(character.className, character.subclass, character.level);
+                        const totalSlots = computedSlots[lvl.level - 1] || 0;
+                        if (totalSlots === 0) return <span className="text-[10px] text-gray-500 italic">Level thấp chưa mở</span>;
+
+                        const boxes = [];
+                        for (let i = 0; i < totalSlots; i++) {
+                          const isUsed = i < lvl.slotsUsed;
+                          boxes.push(
+                            <button
+                              key={i}
+                              onClick={() => {
+                                // Toggle slot used
+                                const newUsed = isUsed ? i : i + 1; // Click an empty box to fill up to that box, click a filled box to empty back to that index
+                                const newSpellLevels = character.spellLevels.map((l, lIdx) =>
+                                  lIdx === idx ? { ...l, slotsUsed: newUsed } : l
+                                );
+                                handleUpdate('spellLevels', newSpellLevels);
+                              }}
+                              className={`transition-colors flex-shrink-0 ${isUsed ? 'text-dragon-gold' : 'text-gray-600 hover:text-dragon-gold/50'}`}
+                            >
+                              {isUsed ? <CheckCircle size={14} className="fill-dragon-gold/20" /> : <Circle size={14} />}
+                            </button>
                           );
-                          handleUpdate('spellLevels', newSpellLevels);
-                        }}
-                      />
-                      <span className="text-gray-600">/</span>
-                      <input
-                        type="number"
-                        className="bg-transparent w-8 text-xs text-dragon-gold text-center focus:outline-none focus:text-white"
-                        value={lvl.slotsUsed}
-                        onChange={(e) => {
-                          // FIXED: Immutable update for slots used
-                          const newSpellLevels = character.spellLevels.map((l, i) =>
-                            i === idx ? { ...l, slotsUsed: parseInt(e.target.value) || 0 } : l
-                          );
-                          handleUpdate('spellLevels', newSpellLevels);
-                        }}
-                      />
+                        }
+                        return boxes;
+                      })()}
                     </div>
                   )}
 
@@ -1963,14 +1968,30 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     {lvl.spells.map((s, spellIdx) => {
                       const spellData = SPELL_DATABASE.find(sp => sp.name === s);
                       const isClassMatch = !spellData || !character.className || spellData.classes.includes(character.className);
+                      const isPrepared = character.preparedSpells?.includes(s) || false;
+                      const requiresPreparation = ['Cleric', 'Druid', 'Wizard', 'Paladin', 'Artificer'].includes(character.className);
+
                       return (
                         <div key={spellIdx} className="flex items-center gap-2 group">
+                          {requiresPreparation && lvl.level > 0 && (
+                            <button
+                              onClick={() => {
+                                const activeList = character.preparedSpells || [];
+                                const newList = isPrepared ? activeList.filter(p => p !== s) : [...activeList, s];
+                                handleUpdate('preparedSpells', newList);
+                              }}
+                              className={`shrink-0 transition-all cursor-pointer hover:scale-110 ${isPrepared ? 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]' : 'text-gray-600 hover:text-yellow-400/50'}`}
+                              title={isPrepared ? "Bỏ chuẩn bị (Un-prepare)" : "Chuẩn bị phép thuật (Prepare)"}
+                            >
+                              <Star size={14} className={isPrepared ? 'fill-yellow-400' : ''} />
+                            </button>
+                          )}
                           {spellData ? (
                             <BadgeTooltip
                               tooltip={`${spellData.name} (${spellData.label})\n${spellData.school} · Level ${spellData.level}\nThời gian: ${spellData.castingTime} · Tầm: ${spellData.range}\nThời lượng: ${spellData.duration}${spellData.concentration ? ' (Concentration)' : ''}\nThành phần: ${spellData.components}\nClass: ${spellData.classes.join(', ')}${!isClassMatch ? '\n\n⚠ Phép này không thuộc class của bạn!' : ''}\n\n${spellData.description}`}
-                              className={`flex-1 text-xs py-1 border-b border-dragon-800 hover:text-dragon-gold transition-colors ${isClassMatch ? 'text-gray-300' : 'text-orange-400/70'}`}
+                              className={`flex-1 text-xs py-1 border-b ${isPrepared ? 'border-yellow-400/30' : 'border-dragon-800'} hover:text-dragon-gold transition-colors text-left flex items-center ${isClassMatch ? (isPrepared ? 'text-white font-bold' : 'text-gray-300') : 'text-orange-400/70'}`}
                             >
-                              {s} <span className="text-gray-600">({spellData.label})</span>
+                              {s} <span className={`ml-1 ${isPrepared ? 'text-gray-400 font-normal mt-0.5 text-[10px]' : 'text-gray-600'} `}>({spellData.label})</span>
                               {!isClassMatch && <span className="text-orange-400 text-[9px] ml-1">không thuộc class</span>}
                             </BadgeTooltip>
                           ) : (

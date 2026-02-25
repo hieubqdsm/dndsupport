@@ -120,7 +120,8 @@ export const BLANK_CHARACTER_VN: Character = {
   spellcastingAbility: "",
   spellSaveDC: 8,
   spellAttackBonus: 0,
-  spellLevels: emptySpellLevels
+  spellLevels: emptySpellLevels,
+  preparedSpells: [],
 };
 
 export const DEFAULT_CHARACTER_VN: Character = {
