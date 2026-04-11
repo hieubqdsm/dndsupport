@@ -2,18 +2,193 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# DragonScroll — D&D 5E Hồ Sơ Nhân Vật
 
-This contains everything you need to run your app locally..
+Ứng dụng quản lý hồ sơ nhân vật D&D 5E, được host trên GitHub Pages.  
+Dữ liệu mặc định lưu trong **localStorage** của trình duyệt. Có thể bật tính năng đồng bộ **Google Sheets** để chia sẻ dữ liệu giữa nhiều thiết bị.
 
-View your app in AI Studio: https://ai.studio/apps/9a218a00-e359-4a7c-9ac4-0e6fa52cca76
+---
 
-## Run Locally
+## Chạy cục bộ
 
-**Prerequisites:**  Node.js
+**Yêu cầu:** Node.js
 
+```bash
+npm install
+npm run dev
+```
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
+---
+
+## Cấu hình đồng bộ Google Sheets (tùy chọn)
+
+Khi bật tính năng này, mọi hồ sơ nhân vật sẽ được tự động sao lưu lên Google Sheets và có thể truy cập từ bất kỳ thiết bị nào.
+
+### Bước 1 — Tạo Google Sheet
+
+1. Vào [Google Sheets](https://sheets.google.com) và tạo một bảng tính mới.
+2. Đặt tên sheet tab đầu tiên là: **`DragonScroll`** (chú ý viết hoa đúng).
+
+Cấu trúc bảng sẽ được tạo tự động bởi script, nhưng để tham khảo, bảng có dạng:
+
+| A — id | B — name | C — characterJson | D — updatedAt |
+|--------|----------|-------------------|---------------|
+| `abc123` | Gandalf | `{"name":"Gandalf",...}` | `2025-01-01T00:00:00.000Z` |
+| `xyz456` | Aragorn | `{"name":"Aragorn",...}` | `2025-01-02T00:00:00.000Z` |
+
+> **Lưu ý:** Không cần tạo header thủ công — script sẽ tự ghi.
+
+---
+
+### Bước 2 — Tạo Google Apps Script
+
+1. Trong Google Sheet vừa tạo, vào menu **Extensions → Apps Script**.
+2. Xóa code mẫu có sẵn, dán đoạn code sau:
+
+```javascript
+const SHEET_NAME = 'DragonScroll';
+
+function doGet(e) {
+  try {
+    const sheet = SpreadsheetApp
+      .getActiveSpreadsheet()
+      .getSheetByName(SHEET_NAME);
+
+    if (!sheet || sheet.getLastRow() < 2) {
+      return jsonResponse([]);
+    }
+
+    // Đọc từ hàng 2 (bỏ qua header)
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+    const profiles = data
+      .filter(row => row[0]) // bỏ hàng trống
+      .map(row => ({
+        id: String(row[0]),
+        name: String(row[1]),
+        character: JSON.parse(String(row[2]) || '{}'),
+        updatedAt: String(row[3]),
+      }));
+
+    return jsonResponse(profiles);
+  } catch (err) {
+    return jsonResponse({ error: String(err) });
+  }
+}
+
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents);
+    if (body.action !== 'saveProfiles') {
+      return jsonResponse({ error: 'Unknown action' });
+    }
+
+    const profiles = body.profiles;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(SHEET_NAME);
+    if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+
+    sheet.clearContents();
+    sheet.appendRow(['id', 'name', 'characterJson', 'updatedAt']);
+
+    profiles.forEach(p => {
+      sheet.appendRow([
+        p.id,
+        p.name,
+        JSON.stringify(p.character),
+        p.updatedAt,
+      ]);
+    });
+
+    return jsonResponse({ success: true, count: profiles.length });
+  } catch (err) {
+    return jsonResponse({ error: String(err) });
+  }
+}
+
+function jsonResponse(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+3. Nhấn **Save** (Ctrl+S), đặt tên project tùy ý (ví dụ: `DragonScrollSync`).
+
+---
+
+### Bước 3 — Deploy Apps Script thành Web App
+
+1. Nhấn nút **Deploy → New deployment**.
+2. Nhấn biểu tượng bánh răng ⚙️ → chọn **Web app**.
+3. Điền thông tin:
+   - **Description:** `DragonScroll Sync` (tùy ý)
+   - **Execute as:** `Me` (tài khoản Google của bạn)
+   - **Who has access:** `Anyone` ← **bắt buộc**
+4. Nhấn **Deploy**.
+5. Lần đầu sẽ yêu cầu cấp quyền — nhấn **Authorize access** và đồng ý.
+6. Sau khi deploy xong, copy **Web app URL** (dạng `https://script.google.com/macros/s/XXXX.../exec`).
+AKfycbxQ-w4BtUvZUWcSp9rzQMfct18K_A4eZF1s91Q7v5BDmkfkGU2T8y5YFbY0dpN0452r
+https://script.google.com/macros/s/AKfycbxQ-w4BtUvZUWcSp9rzQMfct18K_A4eZF1s91Q7v5BDmkfkGU2T8y5YFbY0dpN0452r/exec
+
+> **Mỗi khi sửa code script**, bạn phải deploy lại (New deployment) — URL sẽ thay đổi, cần cập nhật GitHub Variable.
+
+---
+
+### Bước 4 — Thêm Variable vào GitHub Repository
+
+1. Vào trang GitHub repository của dự án.
+2. Chọn **Settings → Secrets and variables → Actions**.
+3. Chọn tab **Variables** (không phải Secrets).
+4. Nhấn **New repository variable** và điền:
+   - **Name:** `VITE_GAS_URL`
+   - **Value:** URL Web App vừa copy ở Bước 3
+5. Nhấn **Add variable**.
+
+> **Tại sao dùng Variable thay vì Secret?**  
+> URL này được nhúng vào bundle JavaScript khi build nên không thể giấu hoàn toàn. Dùng Variable cho phép kiểm tra giá trị dễ hơn. Nếu bạn muốn hạn chế ai biết URL, dùng Secret cũng được — chỉ cần đổi `vars.VITE_GAS_URL` thành `secrets.VITE_GAS_URL` trong file `.github/workflows/deploy.yml`.
+
+---
+
+### Bước 5 — Trigger Deploy lại
+
+Push bất kỳ thay đổi nào lên nhánh `main` để GitHub Actions build lại với biến mới, hoặc vào tab **Actions → chọn workflow → Re-run jobs**.
+
+---
+
+### Kiểm tra hoạt động
+
+Sau khi deploy, mở app và kiểm tra:
+- Góc trên cùng bên phải có biểu tượng **đám mây** ☁️ → đồng bộ đang hoạt động.
+- Biểu tượng màu **xanh lá** = đã đồng bộ thành công.
+- Biểu tượng màu **đỏ** = lỗi (kiểm tra URL trong GitHub Variable và quyền Apps Script).
+- Nhấn vào biểu tượng đám mây để đồng bộ thủ công.
+
+---
+
+## Luồng đồng bộ dữ liệu
+
+```
+Khởi động app
+  └─► Load localStorage (ngay lập tức)
+  └─► Fetch Google Sheets (async, nền)
+        └─► Merge: ID trùng → giữ bản mới hơn (theo updatedAt)
+        └─► ID chỉ có ở Sheets → thêm vào
+        └─► ID chỉ có ở local → giữ nguyên
+
+Khi lưu/xóa hồ sơ
+  └─► Lưu localStorage (ngay lập tức)
+  └─► Sync lên Sheets (background, không chặn UI)
+```
+
+Ứng dụng vẫn hoạt động bình thường khi không có internet — localStorage luôn là nguồn dữ liệu chính.
+
+---
+
+## Cấu trúc file quan trọng
+
+| File | Mục đích |
+|------|----------|
+| `App.tsx` | Logic chính, quản lý hồ sơ, UI navigation |
+| `services/googleSheetService.ts` | Toàn bộ logic gọi Google Apps Script |
+| `types.ts` | TypeScript interfaces (`Character`, `SavedProfile`, ...) |
+| `.github/workflows/deploy.yml` | GitHub Actions: build & deploy lên Pages |

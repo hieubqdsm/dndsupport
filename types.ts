@@ -238,3 +238,9 @@ export interface Combatant {
   ac: number;
   initiativeBonus: number; // Dex modifier để auto-roll (nếu cần)
 }
+export interface SavedProfile {
+  id: string;
+  name: string;
+  character: Character;
+  updatedAt: string;
+}

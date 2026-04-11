@@ -1,23 +1,24 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Character } from './types';
+import { Character, SavedProfile } from './types';
 import { BLANK_CHARACTER_VN } from './constants';
 import CharacterSheet from './components/CharacterSheet';
 import DiceRoller from './components/DiceRoller';
 import MonsterManual from './components/MonsterManual';
 import EncounterTracker from './components/EncounterTracker';
-import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull, Users } from 'lucide-react';
+import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull, Users, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import {
+  isGoogleSheetEnabled,
+  fetchProfilesFromSheet,
+  syncProfilesToSheet,
+  mergeProfiles,
+} from './services/googleSheetService';
 
 const STORAGE_KEY = 'dragonscroll_profiles';
 const ACTIVE_KEY = 'dragonscroll_active';
 const AUTOSAVE_KEY = 'dragonscroll_autosave';
 
-interface SavedProfile {
-  id: string;
-  name: string;
-  character: Character;
-  updatedAt: string;
-}
+type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
@@ -77,7 +78,46 @@ const App: React.FC = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
   const [currentView, setCurrentView] = useState<'character' | 'encounter'>('character');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // On mount: fetch from Google Sheets and merge with localStorage
+  useEffect(() => {
+    if (!isGoogleSheetEnabled()) return;
+    setSyncStatus('syncing');
+    fetchProfilesFromSheet().then(remote => {
+      if (remote.length === 0) {
+        setSyncStatus('idle');
+        return;
+      }
+      setProfiles(prev => {
+        const merged = mergeProfiles(prev, remote);
+        saveProfiles(merged);
+        // If active profile was updated from remote, reload it
+        const activeId = localStorage.getItem(ACTIVE_KEY);
+        if (activeId) {
+          const updated = merged.find(p => p.id === activeId);
+          if (updated) setCharacter(migrateCharacter(updated.character));
+        }
+        return merged;
+      });
+      setSyncStatus('synced');
+    }).catch(() => setSyncStatus('error'));
+  }, []);
+
+  const handleSyncNow = () => {
+    if (!isGoogleSheetEnabled()) return;
+    setSyncStatus('syncing');
+    fetchProfilesFromSheet().then(remote => {
+      setProfiles(prev => {
+        const merged = mergeProfiles(prev, remote);
+        saveProfiles(merged);
+        syncProfilesToSheet(merged);
+        return merged;
+      });
+      setSyncStatus('synced');
+    }).catch(() => setSyncStatus('error'));
+  };
 
   // Autosave character on every change
   useEffect(() => {
@@ -91,6 +131,7 @@ const App: React.FC = () => {
             : p
         );
         saveProfiles(updated);
+        syncProfilesToSheet(updated);
         return updated;
       });
     }
@@ -120,6 +161,7 @@ const App: React.FC = () => {
     const updated = [...profiles, newProfile];
     setProfiles(updated);
     saveProfiles(updated);
+    syncProfilesToSheet(updated);
     setActiveProfileId(newProfile.id);
     localStorage.setItem(ACTIVE_KEY, newProfile.id);
     setShowSaveDialog(false);
@@ -141,6 +183,7 @@ const App: React.FC = () => {
     const updated = profiles.filter(p => p.id !== profileId);
     setProfiles(updated);
     saveProfiles(updated);
+    syncProfilesToSheet(updated);
     if (activeProfileId === profileId) {
       setActiveProfileId(null);
       localStorage.removeItem(ACTIVE_KEY);
@@ -352,6 +395,28 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {isGoogleSheetEnabled() && (
+                <button
+                  onClick={handleSyncNow}
+                  title={
+                    syncStatus === 'syncing' ? 'Đang đồng bộ...' :
+                    syncStatus === 'synced' ? 'Đã đồng bộ Google Sheets' :
+                    syncStatus === 'error' ? 'Lỗi đồng bộ - Nhấn để thử lại' :
+                    'Đồng bộ Google Sheets'
+                  }
+                  className={`p-2 rounded-md transition-all border border-transparent ${
+                    syncStatus === 'syncing' ? 'text-yellow-400 animate-spin' :
+                    syncStatus === 'synced' ? 'text-green-400 hover:bg-dragon-800' :
+                    syncStatus === 'error' ? 'text-red-400 hover:bg-dragon-800' :
+                    'text-gray-500 hover:text-blue-400 hover:bg-dragon-800'
+                  }`}
+                >
+                  {syncStatus === 'syncing' ? <RefreshCw className="w-5 h-5" /> :
+                   syncStatus === 'error' ? <CloudOff className="w-5 h-5" /> :
+                   <Cloud className="w-5 h-5" />}
+                </button>
+              )}
 
               <button
                 onClick={handleReset}
