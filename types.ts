@@ -95,6 +95,17 @@ export interface AsiChoice {
   featName?: string;
 }
 
+export interface MagicItem {
+  id: string;
+  name: string;
+  rarity: 'Common' | 'Uncommon' | 'Rare' | 'Very Rare' | 'Legendary' | 'Artifact';
+  description: string;
+  // Bonus chỉ số: str, dex, con, int, wis, cha, ac, speed, maxHp, initiative
+  statBonuses: Record<string, number>;
+  requiresAttunement: boolean;
+  attuned: boolean;
+}
+
 export interface Character {
   // Trang 1: Thông tin cơ bản & Chiến đấu
   name: string;
@@ -161,6 +172,7 @@ export interface Character {
   backstory: string;
   allies: string;
   treasure: string;
+  magicItems: MagicItem[];
 
   // Trang 3: Phép thuật
   spellcastingAbility: string;

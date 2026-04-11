@@ -117,6 +117,7 @@ export const BLANK_CHARACTER_VN: Character = {
   backstory: "",
   allies: "",
   treasure: "",
+  magicItems: [],
   spellcastingAbility: "",
   spellSaveDC: 8,
   spellAttackBonus: 0,

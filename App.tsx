@@ -48,6 +48,7 @@ function migrateCharacter(c: any): Character {
     armorWorn: c.armorWorn ?? '',
     shieldEquipped: c.shieldEquipped ?? false,
     playerName: c.playerName ?? '',
+    magicItems: c.magicItems ?? [],
   };
 }
 

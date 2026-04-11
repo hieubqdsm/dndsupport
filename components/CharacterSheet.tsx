@@ -7,7 +7,8 @@ import { SPELL_DATABASE } from '../data/spells';
 import { FEAT_DATABASE } from '../data/feats';
 import { getSpellSlots } from '../data/spellSlots';
 import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
-import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown, CheckCircle, Circle, Star } from 'lucide-react';
+import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown, CheckCircle, Circle, Star, Gem } from 'lucide-react';
+import { MagicItem } from '../types';
 
 interface Props {
   character: Character;
@@ -193,7 +194,19 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   // Xác định Class hiện tại để lấy thông tin auto-lock
   const currentClassData = CLASSES_VN.find(c => c.value === character.className);
 
-  // Provide effective stats including racial bonuses and ASI
+  // Tính tổng bonus từ magic items (chỉ tính item đã attune nếu cần attunement)
+  const activeMagicItemBonuses = (() => {
+    const bonuses: Record<string, number> = {};
+    (character.magicItems || []).forEach(item => {
+      if (item.requiresAttunement && !item.attuned) return;
+      Object.entries(item.statBonuses || {} as Record<string, number>).forEach(([stat, val]) => {
+        bonuses[stat] = (bonuses[stat] || 0) + (val as number);
+      });
+    });
+    return bonuses;
+  })();
+
+  // Provide effective stats including racial bonuses, ASI, and magic items
   const effectiveStats = (() => {
     const res = {} as Record<string, AbilityScore>;
     ABILITY_KEYS.forEach(key => {
@@ -210,6 +223,8 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
         });
       }
 
+      score += activeMagicItemBonuses[key] || 0;
+
       const modifier = Math.floor((score - 10) / 2);
       res[key] = { score, modifier };
     });
@@ -225,18 +240,19 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     const wisMod = effectiveStats.wis.modifier;
     const shieldBonus = character.shieldEquipped ? 2 : 0;
 
+    const magicAC = activeMagicItemBonuses['ac'] || 0;
     // No armor equipped
     if (!character.armorWorn || !currentArmor) {
       // Barbarian Unarmored Defense: 10 + Dex + Con
       if (character.className === 'Barbarian') {
-        return 10 + dexMod + conMod + shieldBonus;
+        return 10 + dexMod + conMod + shieldBonus + magicAC;
       }
       // Monk Unarmored Defense: 10 + Dex + Wis
       if (character.className === 'Monk') {
-        return 10 + dexMod + wisMod; // Monk can't use shield
+        return 10 + dexMod + wisMod + magicAC; // Monk can't use shield
       }
       // Default: 10 + Dex
-      return 10 + dexMod + shieldBonus;
+      return 10 + dexMod + shieldBonus + magicAC;
     }
 
     // Armor equipped
@@ -255,7 +271,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
       ac += shieldBonus;
     }
 
-    return ac;
+    return ac + magicAC;
   };
 
   // Sync AC when armor/shield/stats change
@@ -1569,6 +1585,204 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Magic Items */}
+              {(() => {
+                const RARITY_STYLES: Record<string, { badge: string; border: string; glow: string }> = {
+                  'Common':    { badge: 'bg-gray-700/60 text-gray-300 border-gray-600', border: 'border-gray-700', glow: '' },
+                  'Uncommon':  { badge: 'bg-green-900/60 text-green-300 border-green-700', border: 'border-green-900/50', glow: '' },
+                  'Rare':      { badge: 'bg-blue-900/60 text-blue-300 border-blue-700', border: 'border-blue-900/50', glow: '' },
+                  'Very Rare': { badge: 'bg-purple-900/60 text-purple-300 border-purple-700', border: 'border-purple-900/50', glow: '' },
+                  'Legendary': { badge: 'bg-orange-900/60 text-orange-300 border-orange-700', border: 'border-orange-900/50', glow: 'shadow-[0_0_8px_rgba(251,146,60,0.2)]' },
+                  'Artifact':  { badge: 'bg-red-900/60 text-red-300 border-red-700', border: 'border-red-900/50', glow: 'shadow-[0_0_8px_rgba(239,68,68,0.25)]' },
+                };
+                const RARITY_VN: Record<string, string> = {
+                  'Common': 'Thông thường', 'Uncommon': 'Không phổ biến', 'Rare': 'Hiếm',
+                  'Very Rare': 'Rất hiếm', 'Legendary': 'Huyền thoại', 'Artifact': 'Cổ vật',
+                };
+                const STAT_LABELS: Record<string, string> = {
+                  str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA',
+                  ac: 'AC', speed: 'Tốc độ', maxHp: 'HP tối đa', initiative: 'Initiative',
+                  attackBonus: 'Atk Bonus', savingThrows: 'All Saves',
+                };
+                const ALL_STAT_KEYS = ['str','dex','con','int','wis','cha','ac','speed','maxHp','initiative','attackBonus','savingThrows'];
+
+                const items: MagicItem[] = character.magicItems || [];
+
+                const addItem = () => {
+                  const newItem: MagicItem = {
+                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                    name: 'Vật phẩm ma thuật',
+                    rarity: 'Uncommon',
+                    description: '',
+                    statBonuses: {},
+                    requiresAttunement: false,
+                    attuned: false,
+                  };
+                  handleUpdate('magicItems', [...items, newItem]);
+                };
+
+                const updateItem = (idx: number, patch: Partial<MagicItem>) => {
+                  const updated = items.map((it, i) => i === idx ? { ...it, ...patch } : it);
+                  handleUpdate('magicItems', updated);
+                };
+
+                const removeItem = (idx: number) => {
+                  handleUpdate('magicItems', items.filter((_, i) => i !== idx));
+                };
+
+                const attunedCount = items.filter(it => it.requiresAttunement && it.attuned).length;
+
+                return (
+                  <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-3 border-b border-dragon-700 pb-1">
+                      <h3 className="text-dragon-gold font-fantasy text-sm uppercase tracking-wider flex items-center gap-2">
+                        <Gem className="w-4 h-4" /> Vật phẩm ma thuật
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        {attunedCount > 0 && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${attunedCount > 3 ? 'bg-red-900/50 text-red-300 border-red-700' : 'bg-cyan-900/40 text-cyan-300 border-cyan-700'}`}>
+                            Attune: {attunedCount}/3
+                          </span>
+                        )}
+                        <button onClick={addItem} className="text-dragon-gold hover:text-white transition-colors flex items-center gap-1 text-xs font-bold uppercase">
+                          <Plus size={14} /> Thêm
+                        </button>
+                      </div>
+                    </div>
+
+                    {items.length === 0 && (
+                      <p className="text-[11px] text-gray-600 italic text-center py-4">Chưa có vật phẩm ma thuật nào.</p>
+                    )}
+
+                    <div className="space-y-3">
+                      {items.map((item, idx) => {
+                        const style = RARITY_STYLES[item.rarity] || RARITY_STYLES['Common'];
+                        const isActive = !item.requiresAttunement || item.attuned;
+                        const bonusEntries = Object.entries(item.statBonuses || {}).filter(([, v]) => v !== 0);
+
+                        return (
+                          <div key={item.id} className={`bg-dragon-800/50 p-3 rounded-lg border ${style.border} ${style.glow} ${!isActive ? 'opacity-60' : ''} space-y-2.5`}>
+                            {/* Row 1: Name + Rarity + Attune + Delete */}
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="flex-1 bg-transparent text-sm font-bold text-white focus:outline-none focus:text-dragon-gold border-b border-transparent focus:border-dragon-gold/50 min-w-0"
+                                value={item.name}
+                                onChange={e => updateItem(idx, { name: e.target.value })}
+                                placeholder="Tên vật phẩm..."
+                              />
+                              <select
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border appearance-none focus:outline-none cursor-pointer bg-transparent ${style.badge}`}
+                                value={item.rarity}
+                                onChange={e => updateItem(idx, { rarity: e.target.value as MagicItem['rarity'] })}
+                              >
+                                {(['Common','Uncommon','Rare','Very Rare','Legendary','Artifact'] as MagicItem['rarity'][]).map(r => (
+                                  <option key={r} value={r} className="bg-dragon-900 text-gray-200">{RARITY_VN[r]}</option>
+                                ))}
+                              </select>
+                              <button onClick={() => removeItem(idx)} className="text-red-900 hover:text-red-500 shrink-0 transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+
+                            {/* Row 2: Description */}
+                            <input
+                              className="w-full bg-transparent text-[11px] text-gray-400 focus:outline-none border-b border-dragon-800 focus:border-dragon-700 placeholder-gray-700"
+                              value={item.description}
+                              onChange={e => updateItem(idx, { description: e.target.value })}
+                              placeholder="Mô tả hiệu ứng..."
+                            />
+
+                            {/* Row 3: Stat bonuses */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Bonus chỉ số</span>
+                                <select
+                                  className="text-[9px] bg-dragon-900/60 border border-dragon-700 rounded text-gray-400 px-1 py-0.5 focus:outline-none cursor-pointer appearance-none"
+                                  defaultValue=""
+                                  onChange={e => {
+                                    const stat = e.target.value;
+                                    if (!stat) return;
+                                    const current = item.statBonuses || {};
+                                    if (!(stat in current)) {
+                                      updateItem(idx, { statBonuses: { ...current, [stat]: 1 } });
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                >
+                                  <option value="" className="bg-dragon-900">+ Thêm chỉ số</option>
+                                  {ALL_STAT_KEYS.filter(k => !(k in (item.statBonuses || {}))).map(k => (
+                                    <option key={k} value={k} className="bg-dragon-900">{STAT_LABELS[k] || k}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {bonusEntries.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {bonusEntries.map(([stat, val]) => (
+                                    <div key={stat} className="flex items-center gap-1 bg-dragon-900/60 border border-dragon-700 rounded px-1.5 py-0.5">
+                                      <span className="text-[9px] font-bold text-gray-400">{STAT_LABELS[stat] || stat}</span>
+                                      <input
+                                        type="number"
+                                        className="w-10 bg-transparent text-[11px] font-bold text-center focus:outline-none text-dragon-gold"
+                                        value={val}
+                                        onChange={e => {
+                                          const newVal = parseInt(e.target.value) || 0;
+                                          updateItem(idx, { statBonuses: { ...item.statBonuses, [stat]: newVal } });
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const nb = { ...item.statBonuses };
+                                          delete nb[stat];
+                                          updateItem(idx, { statBonuses: nb });
+                                        }}
+                                        className="text-gray-600 hover:text-red-400 transition-colors"
+                                      >×</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Row 4: Attunement */}
+                            <div className="flex items-center gap-3 pt-1 border-t border-dragon-800">
+                              <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-gray-500 select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={item.requiresAttunement}
+                                  onChange={e => updateItem(idx, { requiresAttunement: e.target.checked, attuned: e.target.checked ? item.attuned : false })}
+                                  className="w-3 h-3 accent-cyan-500"
+                                />
+                                Cần Attunement
+                              </label>
+                              {item.requiresAttunement && (
+                                <label className="flex items-center gap-1.5 cursor-pointer text-[10px] select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.attuned}
+                                    onChange={e => updateItem(idx, { attuned: e.target.checked })}
+                                    className="w-3 h-3 accent-cyan-400"
+                                  />
+                                  <span className={item.attuned ? 'text-cyan-300 font-bold' : 'text-gray-600'}>
+                                    {item.attuned ? '✦ Đã Attune' : 'Chưa Attune'}
+                                  </span>
+                                </label>
+                              )}
+                              {bonusEntries.length > 0 && isActive && (
+                                <span className="ml-auto text-[9px] text-green-400 font-bold">✓ Đang hiệu lực</span>
+                              )}
+                              {bonusEntries.length > 0 && !isActive && (
+                                <span className="ml-auto text-[9px] text-gray-600 italic">Cần attune để kích hoạt</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Active Feats (from ASI choices) */}
               {(() => {
