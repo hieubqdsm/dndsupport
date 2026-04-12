@@ -448,24 +448,24 @@ const App: React.FC = () => {
               </button>
 
               {/* View Toggle */}
-              <div className="hidden sm:flex bg-dragon-800/80 rounded-lg p-1 border border-dragon-700">
+              <div className="flex bg-dragon-800/80 rounded-lg p-1 border border-dragon-700">
                 <button
                   onClick={() => setCurrentView('character')}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'character'
+                  className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'character'
                     ? 'bg-dragon-900 text-dragon-gold shadow-md border border-dragon-600'
                     : 'text-gray-400 hover:text-white'
                     }`}
                 >
-                  <Sword className="w-4 h-4" /> Sổ Nhân Vật
+                  <Sword className="w-4 h-4" /> <span className="hidden sm:inline">Sổ Nhân Vật</span>
                 </button>
                 <button
                   onClick={() => setCurrentView('encounter')}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'encounter'
+                  className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'encounter'
                     ? 'bg-dragon-900 text-dragon-gold shadow-md border border-dragon-600'
                     : 'text-gray-400 hover:text-white'
                     }`}
                 >
-                  <Users className="w-4 h-4" /> Giả Lập Combat
+                  <Users className="w-4 h-4" /> <span className="hidden sm:inline">Giả Lập Combat</span>
                 </button>
               </div>
 
