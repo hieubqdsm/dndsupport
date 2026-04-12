@@ -6,7 +6,8 @@ import CharacterSheet from './components/CharacterSheet';
 import DiceRoller from './components/DiceRoller';
 import MonsterManual from './components/MonsterManual';
 import EncounterTracker from './components/EncounterTracker';
-import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull, Users, Cloud, CloudOff, RefreshCw, LogOut, User, Wifi, WifiOff } from 'lucide-react';
+import Arena from './components/Arena';
+import { Dices, Sword, RotateCcw, Save, FolderOpen, Trash2, Plus, ChevronDown, X, Download, Upload, Skull, Users, Cloud, CloudOff, RefreshCw, LogOut, User, Wifi, WifiOff, Swords } from 'lucide-react';
 import {
   isGoogleSheetEnabled,
   fetchProfilesFromSheet,
@@ -197,7 +198,7 @@ const App: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
-  const [currentView, setCurrentView] = useState<'character' | 'encounter'>('character');
+  const [currentView, setCurrentView] = useState<'character' | 'encounter' | 'arena'>('character');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -467,6 +468,15 @@ const App: React.FC = () => {
                 >
                   <Users className="w-4 h-4" /> <span className="hidden sm:inline">Giả Lập Combat</span>
                 </button>
+                <button
+                  onClick={() => setCurrentView('arena')}
+                  className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${currentView === 'arena'
+                    ? 'bg-dragon-900 text-dragon-gold shadow-md border border-dragon-600'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  <Swords className="w-4 h-4" /> <span className="hidden sm:inline">Arena</span>
+                </button>
               </div>
 
               {/* Profile Manager */}
@@ -677,6 +687,9 @@ const App: React.FC = () => {
         <div style={{ display: currentView === 'encounter' ? 'block' : 'none' }}>
           <EncounterTracker profiles={profiles} />
         </div>
+        {currentView === 'arena' && (
+          <Arena character={character} />
+        )}
       </main>
 
       {/* Persistent Dice Button for Mobile */}
