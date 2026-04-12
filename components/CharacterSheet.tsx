@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Character, TabType, AbilityScore, DataOption, CharacterWeapon, AsiChoice } from '../types';
-import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE, ASI_LEVELS, ABILITY_KEYS, ABILITY_LABELS } from '../constants';
+import { CLASSES_VN, SPECIES_VN, BACKGROUNDS_VN, ALIGNMENTS_VN, ABILITY_INFO, SKILL_INFO_MAP, WEAPONS_VN, WEAPON_DATABASE, SUBCLASSES_VN, ARMOR_VN, EQUIPMENT_DATABASE, ASI_LEVELS, ABILITY_KEYS, ABILITY_LABELS, RACE_TRAIT_DETAILS } from '../constants';
 import { SPELL_DATABASE } from '../data/spells';
 import { FEAT_DATABASE } from '../data/feats';
 import { getSpellSlots } from '../data/spellSlots';
@@ -1030,6 +1030,44 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   })}
                 </div>
               </div>
+
+              {/* Racial Traits */}
+              {character.race && (() => {
+                const raceData = SPECIES_VN.find(r => r.value === character.race);
+                const traitDetails = RACE_TRAIT_DETAILS[character.race];
+                if (!raceData || !traitDetails?.length) return null;
+                return (
+                  <div className="bg-dragon-900/50 p-4 rounded-lg border border-dragon-700">
+                    <h3 className="text-dragon-gold font-fantasy text-sm mb-3 border-b border-dragon-700 pb-1 uppercase tracking-wider">
+                      Đặc điểm — {raceData.label}
+                    </h3>
+                    <div className="space-y-2">
+                      {traitDetails.map(trait => (
+                        <div key={trait.name} className="flex items-start gap-2 group">
+                          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-dragon-gold/60 mt-1.5" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-bold text-gray-200">{trait.name}</span>
+                              <InfoTooltip content={trait.desc} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Đặc điểm bổ sung (Ghi chú thêm) */}
+              <div className="bg-dragon-900/50 p-4 rounded-lg border border-dragon-700">
+                <h3 className="text-dragon-gold font-fantasy text-sm mb-3 border-b border-dragon-700 pb-1 uppercase tracking-wider">Đặc điểm bổ sung</h3>
+                <textarea
+                  className="w-full bg-transparent text-xs text-gray-300 min-h-[80px] focus:outline-none border border-dragon-800 rounded p-2 focus:border-dragon-gold/30 resize-none"
+                  value={character.features}
+                  onChange={(e) => handleUpdate('features', e.target.value)}
+                  placeholder="Ghi chú thêm: feats, homebrew features..."
+                />
+              </div>
             </div>
 
             {/* Cột 3: Vitals & Attacks */}
@@ -1917,17 +1955,6 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   </div>
                 ) : null;
               })()}
-
-              {/* Features & Traits (Manual) */}
-              <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                <h3 className="text-dragon-gold font-fantasy text-sm mb-3 uppercase tracking-wider">Đặc điểm bổ sung (Ghi chú thêm)</h3>
-                <textarea
-                  className="w-full bg-transparent text-xs text-gray-300 min-h-[80px] focus:outline-none border border-dragon-800 rounded p-2 focus:border-dragon-gold/30"
-                  value={character.features}
-                  onChange={(e) => handleUpdate('features', e.target.value)}
-                  placeholder="Ghi chú thêm: feats, racial traits, homebrew features..."
-                />
-              </div>
 
               {/* Personality Traits */}
               <div className="grid grid-cols-2 gap-4">

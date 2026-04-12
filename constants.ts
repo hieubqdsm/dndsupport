@@ -7,7 +7,7 @@ import { Character, DataOption } from './types';
 // --- Re-export tất cả databases ---
 export { SKILL_LIST_VN, ABILITY_INFO, SKILL_INFO_MAP } from './data/skills';
 export { CLASSES_VN } from './data/classes';
-export { SPECIES_VN } from './data/species';
+export { SPECIES_VN, RACE_TRAIT_DETAILS } from './data/species';
 export { BACKGROUNDS_VN } from './data/backgrounds';
 export { ALIGNMENTS_VN } from './data/alignments';
 export { WEAPON_DATABASE } from './data/weapons';
