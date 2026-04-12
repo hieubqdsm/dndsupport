@@ -1041,16 +1041,11 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     <h3 className="text-dragon-gold font-fantasy text-sm mb-3 border-b border-dragon-700 pb-1 uppercase tracking-wider">
                       Đặc điểm — {raceData.label}
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {traitDetails.map(trait => (
-                        <div key={trait.name} className="flex items-start gap-2 group">
-                          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-dragon-gold/60 mt-1.5" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs font-bold text-gray-200">{trait.name}</span>
-                              <InfoTooltip content={trait.desc} />
-                            </div>
-                          </div>
+                        <div key={trait.name}>
+                          <div className="text-xs font-bold text-dragon-gold/90 mb-0.5">{trait.name}</div>
+                          <div className="text-[11px] text-gray-400 whitespace-pre-line leading-relaxed">{trait.desc}</div>
                         </div>
                       ))}
                     </div>
