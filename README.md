@@ -31,11 +31,11 @@ Khi bật tính năng này, mọi hồ sơ nhân vật sẽ được tự độn
 
 Cấu trúc bảng sẽ được tạo tự động bởi script, nhưng để tham khảo, bảng có dạng:
 
-| A — id | B — updatedAt | C — profileJson |
-|--------|---------------|-----------------|
-| `abc123` | `2025-01-01T00:00:00.000Z` | `{"id":"abc123","name":"Gandalf","userId":"alice",...}` |
+| A — id | B — name | C — userId | D — updatedAt | E — profileJson |
+|--------|----------|-----------|---------------|-----------------|
+| `abc123` | `Gandalf` | `alice` | `2025-01-01T00:00:00.000Z` | `{"id":"abc123","name":"Gandalf","userId":"alice",...}` |
 
-> **Lưu ý:** Không cần tạo header thủ công — script sẽ tự ghi. Mỗi user chỉ thấy và ghi đè đúng row của mình, nhiều user có thể dùng chung một Sheet.
+> **Lưu ý:** Không cần tạo header thủ công — script sẽ tự ghi. Cột A–D để đọc trực tiếp trên sheet, cột E là JSON đầy đủ để app dùng. Nhiều user có thể dùng chung một Sheet.
 
 ---
 
@@ -46,6 +46,7 @@ Cấu trúc bảng sẽ được tạo tự động bởi script, nhưng để t
 
 ```javascript
 const SHEET_NAME = 'DragonScroll';
+// Cột: [id | name | userId | updatedAt | profileJson]
 
 // GET  ?action=loadProfiles&user=<username>
 // → Trả về mảng SavedProfile[] chỉ của user đó
@@ -62,11 +63,11 @@ function doGet(e) {
       return jsonResponse([]);
     }
 
-    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
     const profiles = rows
-      .filter(row => row[0])
-      .map(row => { try { return JSON.parse(String(row[2])); } catch { return null; } })
-      .filter(p => p && (!user || p.userId === user));
+      .filter(row => row[0] && (!user || String(row[2]) === user))
+      .map(row => { try { return JSON.parse(String(row[4])); } catch { return null; } })
+      .filter(p => p !== null);
 
     return jsonResponse(profiles);
   } catch (err) {
@@ -92,23 +93,22 @@ function doPost(e) {
 
     // Tạo header nếu sheet mới
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['id', 'updatedAt', 'profileJson']);
+      sheet.appendRow(['id', 'name', 'userId', 'updatedAt', 'profileJson']);
     }
 
-    // Xóa các row thuộc user này (duyệt ngược để tránh lệch index)
+    // Xóa các row thuộc user này — dùng cột C (userId) trực tiếp, không parse JSON
     if (sheet.getLastRow() >= 2) {
       const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
       for (let i = rows.length - 1; i >= 0; i--) {
-        try {
-          const p = JSON.parse(String(rows[i][2]));
-          if (!user || p.userId === user) sheet.deleteRow(i + 2);
-        } catch {}
+        if (!user || String(rows[i][2]) === user) {
+          sheet.deleteRow(i + 2); // +2: 1-indexed + bỏ qua header
+        }
       }
     }
 
     // Ghi profiles mới
     profiles.forEach(p => {
-      sheet.appendRow([p.id, p.updatedAt, JSON.stringify(p)]);
+      sheet.appendRow([p.id, p.name, p.userId || '', p.updatedAt, JSON.stringify(p)]);
     });
 
     return jsonResponse({ success: true, count: profiles.length });

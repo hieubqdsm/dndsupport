@@ -108,5 +108,5 @@ Tóm tắt luồng API mà `services/googleSheetService.ts` sử dụng:
 | **Load** | `GET ?action=loadProfiles&user=<username>` → `SavedProfile[]` chỉ của user đó |
 | **Save** | `POST { action, user, profiles }` → xóa row cũ của user, ghi lại mới |
 
-Sheet dùng tên tab `DragonScroll`, 3 cột: `[id, updatedAt, profileJson]`.  
-Mỗi row là một `SavedProfile` serialized JSON (giữ nguyên `userId` để phân tách user).
+Sheet dùng tên tab `DragonScroll`, 5 cột: `[id, name, userId, updatedAt, profileJson]`.  
+Cột `userId` (C) dùng để xóa/lọc row trực tiếp — không cần parse JSON. Cột `profileJson` (E) là full `SavedProfile` object để app đọc lại.
