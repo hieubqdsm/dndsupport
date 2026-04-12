@@ -237,7 +237,7 @@ const EncounterTracker: React.FC<EncounterTrackerProps> = ({ profiles }) => {
                         >
                             <option value="">-- Chọn nhân vật đã lưu --</option>
                             {profiles.map(p => (
-                                <option key={p.id} value={p.id}>{p.name} (Lv {p.character.level})</option>
+                                <option key={p.id} value={p.id}>{p.name} (Lv {p.character?.level ?? '?'})</option>
                             ))}
                         </select>
                         <button

@@ -50,6 +50,7 @@ export function mergeProfiles(
   const map = new Map<string, SavedProfile>();
   for (const p of local) map.set(p.id, p);
   for (const p of remote) {
+    if (!p?.id || !p?.character) continue;
     const existing = map.get(p.id);
     if (!existing || new Date(p.updatedAt) > new Date(existing.updatedAt)) {
       map.set(p.id, p);

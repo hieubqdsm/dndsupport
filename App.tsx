@@ -28,7 +28,8 @@ function generateId() {
 function loadProfiles(): SavedProfile[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    const parsed: SavedProfile[] = data ? JSON.parse(data) : [];
+    return parsed.filter(p => p?.id && p?.character);
   } catch { return []; }
 }
 
@@ -532,7 +533,7 @@ const App: React.FC = () => {
                             <div className="min-w-0 flex-1">
                               <div className="text-sm font-semibold text-gray-200 truncate">{p.name}</div>
                               <div className="text-[10px] text-gray-500">
-                                {p.character.className || '???'} Lv{p.character.level} • {formatDate(p.updatedAt)}
+                                {p.character?.className || '???'} Lv{p.character?.level ?? '?'} • {formatDate(p.updatedAt)}
                               </div>
                             </div>
                             <button
