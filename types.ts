@@ -255,4 +255,10 @@ export interface SavedProfile {
   name: string;
   character: Character;
   updatedAt: string;
+  userId?: string; // username của người sở hữu profile này
+}
+
+export interface UserSession {
+  username: string;
+  mode: 'online' | 'local';
 }

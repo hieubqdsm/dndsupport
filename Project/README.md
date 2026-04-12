@@ -85,3 +85,28 @@ npm install
 # Tạo file .env.local và set GEMINI_API_KEY
 npm run dev
 ```
+
+## Hệ thống đăng nhập & đồng bộ
+
+### Luồng hoạt động
+
+1. **Lần đầu truy cập** → hiển thị màn hình chào với 2 lựa chọn:
+   - **Đăng nhập & Đồng bộ** — nhập nickname → sync data riêng lên Google Sheet
+   - **Chơi Local** — không đồng bộ, data lưu trong localStorage
+2. **Session** lưu ở `localStorage['dragonscroll_session']` gồm `{ username, mode }`
+3. **Profiles** mỗi người chỉ thấy profiles của mình (`userId === username`)
+4. **Đăng xuất** — xóa session, quay về màn hình chào. Data local vẫn giữ nguyên.
+
+### Google Apps Script (GAS)
+
+Script đầy đủ và hướng dẫn deploy xem tại **[README.md — Cấu hình đồng bộ Google Sheets](../README.md)**.
+
+Tóm tắt luồng API mà `services/googleSheetService.ts` sử dụng:
+
+| | Endpoint |
+|---|---|
+| **Load** | `GET ?action=loadProfiles&user=<username>` → `SavedProfile[]` chỉ của user đó |
+| **Save** | `POST { action, user, profiles }` → xóa row cũ của user, ghi lại mới |
+
+Sheet dùng tên tab `DragonScroll`, 3 cột: `[id, updatedAt, profileJson]`.  
+Mỗi row là một `SavedProfile` serialized JSON (giữ nguyên `userId` để phân tách user).

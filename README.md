@@ -31,12 +31,11 @@ Khi bật tính năng này, mọi hồ sơ nhân vật sẽ được tự độn
 
 Cấu trúc bảng sẽ được tạo tự động bởi script, nhưng để tham khảo, bảng có dạng:
 
-| A — id | B — name | C — characterJson | D — updatedAt |
-|--------|----------|-------------------|---------------|
-| `abc123` | Gandalf | `{"name":"Gandalf",...}` | `2025-01-01T00:00:00.000Z` |
-| `xyz456` | Aragorn | `{"name":"Aragorn",...}` | `2025-01-02T00:00:00.000Z` |
+| A — id | B — updatedAt | C — profileJson |
+|--------|---------------|-----------------|
+| `abc123` | `2025-01-01T00:00:00.000Z` | `{"id":"abc123","name":"Gandalf","userId":"alice",...}` |
 
-> **Lưu ý:** Không cần tạo header thủ công — script sẽ tự ghi.
+> **Lưu ý:** Không cần tạo header thủ công — script sẽ tự ghi. Mỗi user chỉ thấy và ghi đè đúng row của mình, nhiều user có thể dùng chung một Sheet.
 
 ---
 
@@ -48,26 +47,26 @@ Cấu trúc bảng sẽ được tạo tự động bởi script, nhưng để t
 ```javascript
 const SHEET_NAME = 'DragonScroll';
 
+// GET  ?action=loadProfiles&user=<username>
+// → Trả về mảng SavedProfile[] chỉ của user đó
 function doGet(e) {
   try {
-    const sheet = SpreadsheetApp
-      .getActiveSpreadsheet()
-      .getSheetByName(SHEET_NAME);
+    if (e.parameter.action !== 'loadProfiles') {
+      return jsonResponse({ error: 'Unknown action' });
+    }
+
+    const user  = e.parameter.user || '';
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
 
     if (!sheet || sheet.getLastRow() < 2) {
       return jsonResponse([]);
     }
 
-    // Đọc từ hàng 2 (bỏ qua header)
-    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
-    const profiles = data
-      .filter(row => row[0]) // bỏ hàng trống
-      .map(row => ({
-        id: String(row[0]),
-        name: String(row[1]),
-        character: JSON.parse(String(row[2]) || '{}'),
-        updatedAt: String(row[3]),
-      }));
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    const profiles = rows
+      .filter(row => row[0])
+      .map(row => { try { return JSON.parse(String(row[2])); } catch { return null; } })
+      .filter(p => p && (!user || p.userId === user));
 
     return jsonResponse(profiles);
   } catch (err) {
@@ -75,6 +74,8 @@ function doGet(e) {
   }
 }
 
+// POST  body: { action: 'saveProfiles', user: <username>, profiles: SavedProfile[] }
+// → Xóa các row cũ của user đó, ghi lại toàn bộ profiles mới
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -82,21 +83,32 @@ function doPost(e) {
       return jsonResponse({ error: 'Unknown action' });
     }
 
-    const profiles = body.profiles;
+    const user     = body.user     || '';
+    const profiles = body.profiles || [];
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAME);
     if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
 
-    sheet.clearContents();
-    sheet.appendRow(['id', 'name', 'characterJson', 'updatedAt']);
+    // Tạo header nếu sheet mới
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['id', 'updatedAt', 'profileJson']);
+    }
 
+    // Xóa các row thuộc user này (duyệt ngược để tránh lệch index)
+    if (sheet.getLastRow() >= 2) {
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+      for (let i = rows.length - 1; i >= 0; i--) {
+        try {
+          const p = JSON.parse(String(rows[i][2]));
+          if (!user || p.userId === user) sheet.deleteRow(i + 2);
+        } catch {}
+      }
+    }
+
+    // Ghi profiles mới
     profiles.forEach(p => {
-      sheet.appendRow([
-        p.id,
-        p.name,
-        JSON.stringify(p.character),
-        p.updatedAt,
-      ]);
+      sheet.appendRow([p.id, p.updatedAt, JSON.stringify(p)]);
     });
 
     return jsonResponse({ success: true, count: profiles.length });

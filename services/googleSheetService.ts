@@ -7,13 +7,14 @@ export function isGoogleSheetEnabled(): boolean {
 }
 
 /**
- * Load all profiles from Google Sheets via Google Apps Script.
- * Returns empty array on any error (network, misconfiguration, etc.)
+ * Load profiles từ Google Sheets, lọc theo user.
+ * GAS endpoint cần hỗ trợ query param: ?action=loadProfiles&user=xxx
  */
-export async function fetchProfilesFromSheet(): Promise<SavedProfile[]> {
+export async function fetchProfilesFromSheet(userId: string): Promise<SavedProfile[]> {
   if (!GAS_URL) return [];
   try {
-    const res = await fetch(`${GAS_URL}?action=loadProfiles`, { cache: 'no-store' });
+    const url = `${GAS_URL}?action=loadProfiles&user=${encodeURIComponent(userId)}`;
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
@@ -23,24 +24,24 @@ export async function fetchProfilesFromSheet(): Promise<SavedProfile[]> {
 }
 
 /**
- * Save all profiles to Google Sheets via Google Apps Script.
- * Fire-and-forget: does not block the UI, silently ignores errors.
+ * Lưu profiles lên Google Sheets, kèm userId.
+ * GAS endpoint nhận POST với body: { action, user, profiles }
+ * Fire-and-forget.
  */
-export function syncProfilesToSheet(profiles: SavedProfile[]): void {
+export function syncProfilesToSheet(profiles: SavedProfile[], userId: string): void {
   if (!GAS_URL) return;
-  // Use text/plain to avoid CORS preflight (GAS limitation)
   fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action: 'saveProfiles', profiles }),
-  }).catch(() => {/* silently ignore network errors */});
+    body: JSON.stringify({ action: 'saveProfiles', user: userId, profiles }),
+  }).catch(() => {/* silently ignore */});
 }
 
 /**
- * Merge local profiles with remote profiles.
- * - For same ID: keep the one with the most recent updatedAt.
- * - IDs only in remote: add to result.
- * - IDs only in local: keep in result.
+ * Merge local profiles với remote profiles.
+ * - Cùng ID: giữ cái mới hơn (updatedAt).
+ * - Chỉ ở remote: thêm vào.
+ * - Chỉ ở local: giữ lại.
  */
 export function mergeProfiles(
   local: SavedProfile[],
