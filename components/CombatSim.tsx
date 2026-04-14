@@ -131,7 +131,8 @@ const INIT: CombatRState = {
 type CombatAction =
   | { type:'START'; playerHp:number; monsterHp:number }
   | { type:'STEP'; character:Character; monster:Monster; d20Override?:number; damageOverride?:number }
-  | { type:'RESET'; playerHp:number; monsterHp:number };
+  | { type:'RESET'; playerHp:number; monsterHp:number }
+  | { type:'CONTINUE'; playerHp:number };
 
 function combatStep(s: CombatRState, char: Character, mon: Monster, opts: { d20Override?:number; damageOverride?:number } = {}): CombatRState {
   const monAC = parseAC(mon.ac);
@@ -213,10 +214,11 @@ function combatStep(s: CombatRState, char: Character, mon: Monster, opts: { d20O
 
 function combatReducer(s: CombatRState, a: CombatAction): CombatRState {
   switch (a.type) {
-    case 'START':  return { ...INIT, phase:'initiative_player', playerHp:a.playerHp, monsterHp:a.monsterHp };
-    case 'STEP':   return combatStep(s, a.character, a.monster, { d20Override:a.d20Override, damageOverride:a.damageOverride });
-    case 'RESET':  return { ...INIT, playerHp:a.playerHp, monsterHp:a.monsterHp };
-    default:       return s;
+    case 'START':    return { ...INIT, phase:'initiative_player', playerHp:a.playerHp, monsterHp:a.monsterHp };
+    case 'STEP':     return combatStep(s, a.character, a.monster, { d20Override:a.d20Override, damageOverride:a.damageOverride });
+    case 'RESET':    return { ...INIT, playerHp:a.playerHp, monsterHp:a.monsterHp };
+    case 'CONTINUE': return { ...INIT, phase:'idle', playerHp:a.playerHp, monsterHp:0 };
+    default:         return s;
   }
 }
 
@@ -488,6 +490,24 @@ const CombatSim: React.FC<CombatSimProps> = ({
     setSearchQuery('');
   };
 
+  // Continue fighting after monster defeated — keep player HP as-is
+  const handleContinueSame = () => {
+    if (!monster) return;
+    setPendingRoll(null);
+    dispatch({ type:'CONTINUE', playerHp });
+    onMonsterSelect(monster); // reset monster HP to max in parent
+  };
+
+  const handleContinueRandom = () => {
+    const pool = filteredMonsters.length > 0 ? filteredMonsters : [...OFFLINE_MONSTERS];
+    if (!pool.length) return;
+    const available = pool.filter(m => m.name !== monster?.name);
+    const pick = available.length > 0 ? available : pool;
+    setPendingRoll(null);
+    dispatch({ type:'CONTINUE', playerHp });
+    onMonsterSelect(pick[Math.floor(Math.random() * pick.length)]);
+  };
+
   const pctP = playerMaxHp > 0 ? Math.max(0, Math.min(100, (state.playerHp / playerMaxHp) * 100)) : 0;
   const pctM = monsterMaxHp > 0 ? Math.max(0, Math.min(100, (state.monsterHp / monsterMaxHp) * 100)) : 0;
   const hpColor = (p: number) => p > 50 ? 'bg-green-500' : p > 25 ? 'bg-yellow-500' : 'bg-red-500';
@@ -640,12 +660,34 @@ const CombatSim: React.FC<CombatSimProps> = ({
           </div>
 
           {state.phase==='finished' && state.winner && (
-            <div className={`rounded-lg p-3 text-center border animate-in fade-in ${
+            <div className={`rounded-lg p-3 border animate-in fade-in ${
               state.winner==='player'?'bg-green-900/30 border-green-700':'bg-red-900/30 border-red-700'}`}>
-              <p className={`font-fantasy text-xl font-bold ${state.winner==='player'?'text-green-400':'text-red-400'}`}>
+              <p className={`font-fantasy text-xl font-bold text-center ${state.winner==='player'?'text-green-400':'text-red-400'}`}>
                 {state.winner==='player' ? `🏆 ${character.name} chiến thắng!` : `💀 ${monster?.name} chiến thắng!`}
               </p>
-              <p className="text-gray-500 text-xs mt-0.5">Sau {state.round} round</p>
+              <p className="text-gray-500 text-xs text-center mt-0.5">Sau {state.round} round</p>
+
+              {/* Continue options — only shown when player wins */}
+              {state.winner==='player' && (
+                <div className="mt-3 space-y-1.5">
+                  <div className="text-[10px] text-gray-500 uppercase font-bold text-center tracking-wider mb-2">
+                    Tiếp tục với HP hiện tại ({playerHp}/{playerMaxHp})?
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleContinueSame}
+                      disabled={!monster}
+                      className="flex-1 py-1.5 rounded-lg text-[11px] font-black uppercase flex items-center justify-center gap-1.5 bg-dragon-800 border border-dragon-600 text-dragon-gold hover:bg-dragon-700 active:scale-95 transition-all">
+                      <Swords size={11} /> Đánh lại con này
+                    </button>
+                    <button
+                      onClick={handleContinueRandom}
+                      className="flex-1 py-1.5 rounded-lg text-[11px] font-black uppercase flex items-center justify-center gap-1.5 bg-red-900/40 border border-red-800 text-red-300 hover:bg-red-900/60 active:scale-95 transition-all">
+                      <Shuffle size={11} /> Random quái mới
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
