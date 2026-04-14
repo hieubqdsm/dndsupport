@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { DICE_TYPES } from '../constants';
 import { DiceRoll } from '../types';
-import { Dices, RotateCcw, X, History } from 'lucide-react';
+import { Dices, RotateCcw, X, History, Zap, Box } from 'lucide-react';
+
+type RollMode = 'quick' | 'visual';
 
 interface DiceRollerProps {
   isOpen: boolean;
@@ -104,6 +106,7 @@ const DiceRoller: React.FC<DiceRollerProps> = ({ isOpen, onClose }) => {
   const [displayValue, setDisplayValue] = useState<number>(1);
   const [activeSides, setActiveSides] = useState<number | null>(null);
   const [rotation, setRotation] = useState(0);
+  const [mode, setMode] = useState<RollMode>('visual');
 
   const rollingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -162,6 +165,30 @@ const DiceRoller: React.FC<DiceRollerProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
+        {/* Mode toggle */}
+        <div className="flex bg-dragon-950 border-b border-dragon-800">
+          <button
+            onClick={() => setMode('quick')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[11px] font-black uppercase tracking-widest transition-all ${
+              mode === 'quick'
+                ? 'text-dragon-gold border-b-2 border-dragon-gold bg-dragon-900/50'
+                : 'text-gray-600 hover:text-gray-400'
+            }`}
+          >
+            <Zap size={13} /> Đổ Nhanh
+          </button>
+          <button
+            onClick={() => setMode('visual')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[11px] font-black uppercase tracking-widest transition-all ${
+              mode === 'visual'
+                ? 'text-dragon-gold border-b-2 border-dragon-gold bg-dragon-900/50'
+                : 'text-gray-600 hover:text-gray-400'
+            }`}
+          >
+            <Box size={13} /> Giả Lập 3D
+          </button>
+        </div>
+
         {/* Dice type buttons */}
         <div className="p-6 grid grid-cols-4 gap-4 bg-dragon-800/30">
           {DICE_TYPES.map((sides) => (
@@ -186,8 +213,8 @@ const DiceRoller: React.FC<DiceRollerProps> = ({ isOpen, onClose }) => {
           ))}
         </div>
 
-        {/* Visual dice simulation panel */}
-        {activeSides !== null && (
+        {/* Visual dice simulation panel — chỉ hiện khi mode = visual */}
+        {mode === 'visual' && activeSides !== null && (
           <div className="bg-dragon-950 px-6 py-5 border-b border-dragon-800 flex items-center gap-6">
             {/* Dice visual */}
             <div className={`w-24 h-24 flex-shrink-0 ${isRolling ? 'animate-bounce' : ''}`}>
@@ -274,15 +301,17 @@ const DiceRoller: React.FC<DiceRollerProps> = ({ isOpen, onClose }) => {
                   className="flex items-center justify-between bg-dragon-900/50 p-4 rounded-lg border border-dragon-800 animate-in slide-in-from-top-2 shadow-sm"
                 >
                   <div className="flex items-center gap-3">
-                    {/* Mini dice icon in history */}
-                    <div className="w-9 h-9 flex-shrink-0 opacity-80">
-                      <DiceVisual
-                        sides={roll.type}
-                        value={roll.value}
-                        isRolling={false}
-                        rotation={0}
-                      />
-                    </div>
+                    {/* Mini dice icon in history — chỉ hiện khi visual mode */}
+                    {mode === 'visual' && (
+                      <div className="w-9 h-9 flex-shrink-0 opacity-80">
+                        <DiceVisual
+                          sides={roll.type}
+                          value={roll.value}
+                          isRolling={false}
+                          rotation={0}
+                        />
+                      </div>
+                    )}
                     <div className="flex flex-col">
                       <span className="text-gray-500 font-black text-[10px] uppercase">
                         d{roll.type}
