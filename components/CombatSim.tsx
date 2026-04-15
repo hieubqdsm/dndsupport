@@ -2,7 +2,7 @@ import React, { useReducer, useEffect, useState, useRef, useMemo } from 'react';
 import { Character, Monster } from '../types';
 import { OFFLINE_MONSTERS } from '../data/monsterData';
 import { WEAPON_DATABASE } from '../data/weapons';
-import { Swords, Play, RotateCcw, Shuffle, Dices, Bot, Eye, X, Search, Zap } from 'lucide-react';
+import { Swords, Play, RotateCcw, Shuffle, Dices, Bot, Eye, X, Search, Zap, Moon, Sun, ChevronDown, ChevronUp } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +44,7 @@ interface CombatRState {
   bonusAttackAvailable: boolean;
   bonusAttackUsed: boolean;
   isBonusAction: boolean;
+  resourcesInitialized: boolean; // true after first START; keeps per-rest resources from being re-evaluated
 }
 
 interface PendingRollConfig {
@@ -199,12 +200,36 @@ function getBonusAttack(character: Character): ParsedAttack | null {
 // ── Monster helpers ────────────────────────────────────────────────────────────
 
 function getMonsterAttackCount(monster: Monster): number {
+  // Explicit field wins
+  if (monster.multiattack !== undefined) return monster.multiattack;
+
   const ma = monster.actions.find(a => a.name.toLowerCase() === 'multiattack');
   if (!ma) return 1;
+  const desc = ma.desc.trim();
+
+  // Word numbers: "two attacks" etc.
   const words: Record<string, number> = { one:1, two:2, three:3, four:4, five:5, six:6 };
-  const wm = ma.desc.match(/\b(one|two|three|four|five|six)\b/i);
+  const wm = desc.match(/\b(one|two|three|four|five|six)\b/i);
   if (wm) return words[wm[1].toLowerCase()] ?? 2;
-  const nm = ma.desc.match(/(\d+)/);
+
+  // "N: ..." — leading total like "3: 1 Bite + 2 Claws"
+  const colonMatch = desc.match(/^(\d+):/);
+  if (colonMatch) return parseInt(colonMatch[1]);
+
+  // "N attacks" / "N melee attacks" / "Frightful Presence + N attacks"
+  const attacksMatch = desc.match(/\b(\d+)\s+(?:attacks?|melee|ranged)/i);
+  if (attacksMatch) return parseInt(attacksMatch[1]);
+
+  // "N Foo + M Bar [+ ...]" — each component is "count name", sum them
+  if (desc.includes(' + ')) {
+    const parts = desc.split(/\s*\+\s*/);
+    if (parts.every(p => /^\d+\s/.test(p.trim()))) {
+      return parts.reduce((sum, p) => sum + parseInt(p.trim()), 0);
+    }
+  }
+
+  // Fallback: first number in desc
+  const nm = desc.match(/(\d+)/);
   return nm ? parseInt(nm[1]) : 2;
 }
 
@@ -230,10 +255,17 @@ function parseMonsterAttacks(monster: Monster): ParsedAttack[] {
         damages.push({ formula, damageType: dtype.toLowerCase() });
       }
     }
-    // Fallback: no avg wrapper
+    // Fallback A: "Hit: Xd6+Y type" standard format
     if (damages.length === 0) {
       const fb = d.match(/Hit:\s*(\d+d\d+(?:\s*[+\-]\s*\d+)?)(?:\s+(\w+))?/i);
       if (fb) damages.push({ formula: fb[1].replace(/\s/g,''), damageType: (fb[2] || '').toLowerCase() });
+    }
+    // Fallback B: compact flat "+X, N Type" — no formula in parens (e.g. "+0, 1 Slashing")
+    if (damages.length === 0) {
+      const fb = d.match(/,\s*(\d+)\s+([A-Za-z]\w+)(?:\s+damage)?/i);
+      if (fb && !['to','hit','reach','range','ft'].includes(fb[2].toLowerCase())) {
+        damages.push({ formula: fb[1], damageType: fb[2].toLowerCase() });
+      }
     }
 
     if (damages.length > 0) results.push({ name: action.name, bonus, damages });
@@ -263,6 +295,35 @@ function getPrimaryAttack(character: Character): ParsedAttack {
   return { name:'Tay không', bonus:sm+(character.proficiencyBonus||2), damages:[{ formula:`1d4${sm>=0?'+':''}${sm}`, damageType:'bludgeoning' }] };
 }
 
+function getEffectiveConMod(character: Character): number {
+  let score = character.stats.con.score;
+  score += Number(character.racialBonuses?.con) || 0;
+  if (character.asiChoices) {
+    Object.values(character.asiChoices).forEach((choice: any) => {
+      if (choice?.type === 'asi') {
+        if (choice.ability1 === 'con') score += Number(choice.amount1) || 0;
+        if (choice.ability2 === 'con') score += Number(choice.amount2) || 0;
+      }
+    });
+  }
+  (character.magicItems || []).forEach(item => {
+    if (item.requiresAttunement && !item.attuned) return;
+    score += Number(item.statBonuses?.con) || 0;
+  });
+  return Math.floor((score - 10) / 2);
+}
+
+function getHitDieFormula(character: Character): string {
+  const cls = (character.className || '').toLowerCase();
+  let die = 8;
+  if (cls.includes('barbarian')) die = 12;
+  else if (cls.includes('fighter') || cls.includes('paladin') || cls.includes('ranger')) die = 10;
+  else if (cls.includes('wizard') || cls.includes('sorcerer')) die = 6;
+  const conMod = getEffectiveConMod(character);
+  const modStr = conMod >= 0 ? `+${conMod}` : String(conMod);
+  return `1d${die}${modStr}`;
+}
+
 function mkLog(round:number, actor:CombatLogEntry['actor'], type:CombatLogEntry['type'], text:string): CombatLogEntry {
   return { id:Math.random().toString(36).substr(2,6), round, actor, type, text };
 }
@@ -277,6 +338,7 @@ const INIT: CombatRState = {
   monsterAttacksTotal:1, monsterAttacksRemaining:1,
   surgeAvailable:false, bonusAttackAvailable:false,
   bonusAttackUsed:false, isBonusAction:false,
+  resourcesInitialized:false,
 };
 
 type CombatAction =
@@ -284,7 +346,9 @@ type CombatAction =
   | { type:'STEP'; character:Character; monster:Monster; d20Override?:number; damageOverride?:number }
   | { type:'CHOICE'; choice:'surge'|'bonus'; use:boolean; character:Character; monster:Monster }
   | { type:'RESET'; playerHp:number; monsterHp:number; surgeAvailable:boolean; bonusAttackAvailable:boolean; playerAttacksTotal:number; monsterAttacksTotal:number }
-  | { type:'CONTINUE'; playerHp:number };
+  | { type:'CONTINUE'; playerHp:number }
+  | { type:'SHORT_REST'; character:Character; hpGain:number; maxHp:number }
+  | { type:'LONG_REST'; maxHp:number };
 
 function afterPlayerAttack(s: CombatRState, mon: Monster, log: CombatLogEntry[]): CombatRState {
   const ns = { ...s, log };
@@ -415,7 +479,8 @@ function combatReducer(s: CombatRState, a: CombatAction): CombatRState {
       return { ...INIT, phase:'initiative_player', playerHp:a.playerHp, monsterHp:a.monsterHp,
         surgeAvailable:a.surgeAvailable, bonusAttackAvailable:a.bonusAttackAvailable,
         playerAttacksTotal:a.playerAttacksTotal, playerAttacksRemaining:a.playerAttacksTotal,
-        monsterAttacksTotal:a.monsterAttacksTotal, monsterAttacksRemaining:a.monsterAttacksTotal };
+        monsterAttacksTotal:a.monsterAttacksTotal, monsterAttacksRemaining:a.monsterAttacksTotal,
+        resourcesInitialized:true };
 
     case 'STEP':
       return combatStep(s, a.character, a.monster, { d20Override:a.d20Override, damageOverride:a.damageOverride });
@@ -448,7 +513,22 @@ function combatReducer(s: CombatRState, a: CombatAction): CombatRState {
         monsterAttacksTotal:a.monsterAttacksTotal, monsterAttacksRemaining:a.monsterAttacksTotal };
 
     case 'CONTINUE':
-      return { ...INIT, phase:'idle', playerHp:a.playerHp };
+      // Preserve per-rest resources (surge, bonus attack availability) — only rest resets these
+      return { ...INIT, phase:'idle', playerHp:a.playerHp,
+        surgeAvailable: s.surgeAvailable,
+        bonusAttackAvailable: s.bonusAttackAvailable,
+        playerAttacksTotal: s.playerAttacksTotal,
+        resourcesInitialized: true };
+
+    case 'SHORT_REST': {
+      const newHp = Math.min(a.maxHp, s.playerHp + a.hpGain);
+      return { ...s, playerHp: newHp,
+        surgeAvailable: hasActionSurge(a.character),
+        bonusAttackUsed: false };
+    }
+
+    case 'LONG_REST':
+      return { ...INIT, playerHp: a.maxHp };
 
     default: return s;
   }
@@ -659,6 +739,8 @@ const CombatSim: React.FC<CombatSimProps> = ({
   const [gmMode, setGmMode]             = useState(false);
   const [pendingRoll, setPendingRoll]   = useState<PendingRollConfig | null>(null);
   const [pendingChoice, setPendingChoice] = useState<PendingChoiceConfig | null>(null);
+  const [pendingRestRoll, setPendingRestRoll] = useState<PendingRollConfig | null>(null);
+  const [showRest, setShowRest]         = useState(false);
   const [randomCR, setRandomCR]         = useState('');
   const [randomType, setRandomType]     = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -729,7 +811,7 @@ const CombatSim: React.FC<CombatSimProps> = ({
       return () => clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase, gmMode, monster?.name]);
+  }, [state.phase, state.playerAttacksRemaining, state.monsterAttacksRemaining, gmMode, monster?.name]);
 
   // Sync HP to parent
   useEffect(() => {
@@ -749,9 +831,14 @@ const CombatSim: React.FC<CombatSimProps> = ({
 
   const handleStart = () => {
     if (!monster) return;
+    // If resources have been initialized before (post-Continue), preserve them.
+    // On the very first fight (resourcesInitialized=false), evaluate fresh from character.
+    const surgeAvail = state.resourcesInitialized
+      ? state.surgeAvailable
+      : hasActionSurge(character);
     dispatch({
       type: 'START', playerHp, monsterHp,
-      surgeAvailable: hasActionSurge(character),
+      surgeAvailable: surgeAvail,
       bonusAttackAvailable: getBonusAttack(character) !== null,
       playerAttacksTotal: getExtraAttacks(character),
       monsterAttacksTotal: getMonsterAttackCount(monster),
@@ -798,6 +885,32 @@ const CombatSim: React.FC<CombatSimProps> = ({
     setPendingRoll(null); setPendingChoice(null);
     dispatch({ type:'CONTINUE', playerHp });
     onMonsterSelect(monster);
+  };
+
+  const handleShortRest = () => {
+    const formula = getHitDieFormula(character);
+    setPendingRestRoll({
+      actor: 'player',
+      title: `Short Rest — Hồi máu (${formula})`,
+      context: `Tung hit die để hồi HP. Con modifier: ${fmtMod(getEffectiveConMod(character))}`,
+      isD20: false,
+      modifier: 0,
+      formula,
+    });
+  };
+
+  const handleLongRest = () => {
+    dispatch({ type: 'LONG_REST', maxHp: playerMaxHp });
+    onPlayerHpChange(playerMaxHp);
+    setShowRest(false);
+  };
+
+  const handleRestRollConfirm = (value: number) => {
+    const hpGain = Math.max(1, value);
+    dispatch({ type: 'SHORT_REST', character, hpGain, maxHp: playerMaxHp });
+    onPlayerHpChange(Math.min(playerMaxHp, state.playerHp + hpGain));
+    setPendingRestRoll(null);
+    setShowRest(false);
   };
 
   const handleContinueRandom = () => {
@@ -1048,6 +1161,63 @@ const CombatSim: React.FC<CombatSimProps> = ({
           {monster
             ? <p className="text-gray-500 text-sm italic">Nhấn "Bắt đầu chiến đấu" để tung sáng kiến</p>
             : <p className="text-gray-600 text-sm italic">Chọn hoặc random quái vật phía trên để bắt đầu</p>}
+        </div>
+      )}
+
+      {/* Rest section — only when idle or finished */}
+      {(state.phase === 'idle' || state.phase === 'finished') && (
+        <div className="px-5 pb-4 border-t border-dragon-800 pt-3">
+          <button
+            onClick={() => setShowRest(v => !v)}
+            className="flex items-center gap-2 text-[11px] font-black uppercase text-gray-500 hover:text-gray-300 transition-colors w-full">
+            {showRest ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            <Moon size={11} /> Nghỉ Ngơi
+            <span className="ml-auto text-[10px] font-normal text-gray-600 normal-case">
+              HP: {state.phase === 'idle' ? playerHp : state.playerHp}/{playerMaxHp}
+            </span>
+          </button>
+
+          {showRest && (
+            <div className="mt-3 space-y-3 animate-in slide-in-from-top-1">
+              {/* Short Rest */}
+              {pendingRestRoll ? (
+                <RollPrompt config={pendingRestRoll} onConfirm={handleRestRollConfirm} />
+              ) : (
+                <div className="rounded-lg border border-blue-800/60 bg-blue-950/30 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Moon size={13} className="text-blue-400" />
+                    <span className="text-blue-300 text-xs font-bold">Short Rest</span>
+                    <span className="text-gray-600 text-[10px] ml-auto">Hit die: {getHitDieFormula(character)}</span>
+                  </div>
+                  <p className="text-gray-500 text-[10px]">
+                    Tung hit die để hồi HP. Reset Action Surge &amp; Bonus Attack.
+                  </p>
+                  <button
+                    onClick={handleShortRest}
+                    disabled={(state.phase === 'idle' ? playerHp : state.playerHp) >= playerMaxHp}
+                    className="w-full py-1.5 rounded-lg text-[11px] font-black uppercase flex items-center justify-center gap-1.5 bg-blue-900/40 border border-blue-700 text-blue-300 hover:bg-blue-900/60 transition-colors active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <Dices size={11} /> Tung {getHitDieFormula(character)}
+                  </button>
+                </div>
+              )}
+
+              {/* Long Rest */}
+              <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sun size={13} className="text-amber-400" />
+                  <span className="text-amber-300 text-xs font-bold">Long Rest</span>
+                </div>
+                <p className="text-gray-500 text-[10px]">
+                  Hồi đầy HP + reset Action Surge, Bonus Action, tất cả tài nguyên.
+                </p>
+                <button
+                  onClick={handleLongRest}
+                  className="w-full py-1.5 rounded-lg text-[11px] font-black uppercase flex items-center justify-center gap-1.5 bg-amber-900/40 border border-amber-700 text-amber-300 hover:bg-amber-900/60 transition-colors active:scale-95">
+                  <Sun size={11} /> Long Rest — Hồi đầy HP
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -234,6 +234,7 @@ export interface Monster {
   actions: MonsterAction[]; // Attacks
   legendaryActions?: MonsterAction[];
   description?: string; // Flavor text
+  multiattack?: number; // Explicit attack count override (optional — parsed from Multiattack action if absent)
 }
 
 export interface Combatant {
