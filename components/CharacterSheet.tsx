@@ -282,6 +282,14 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     }
   }, [character.armorWorn, character.shieldEquipped, effectiveStats, character.className]);
 
+  // Sync initiative to effective DEX modifier + any magic item initiative bonus
+  useEffect(() => {
+    const newInitiative = effectiveStats.dex.modifier + (activeMagicItemBonuses['initiative'] || 0);
+    if (newInitiative !== character.initiative) {
+      handleUpdate('initiative', newInitiative);
+    }
+  }, [effectiveStats.dex.modifier, activeMagicItemBonuses['initiative']]);
+
   const getModStr = (mod: number) => (mod >= 0 ? `+${mod}` : mod.toString());
 
   // Helper để cập nhật các field lồng nhau

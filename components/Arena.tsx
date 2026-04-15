@@ -37,6 +37,32 @@ function getCRColor(cr: string) {
 
 const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
 
+// Replicate the same effective-stats logic as CharacterSheet so Arena displays accurate values
+function computeEffectiveStats(character: Character): Record<string, number> {
+  const res: Record<string, number> = {};
+  ABILITY_KEYS.forEach(key => {
+    let score = Number(character.stats[key as keyof typeof character.stats]?.score) || 10;
+    // Racial bonuses
+    score += Number(character.racialBonuses?.[key]) || 0;
+    // ASI choices
+    if (character.asiChoices) {
+      Object.values(character.asiChoices).forEach((choice: any) => {
+        if (choice?.type === 'asi') {
+          if (choice.ability1 === key) score += Number(choice.amount1) || 0;
+          if (choice.ability2 === key) score += Number(choice.amount2) || 0;
+        }
+      });
+    }
+    // Active magic item bonuses
+    (character.magicItems || []).forEach(item => {
+      if (item.requiresAttunement && !item.attuned) return;
+      score += Number(item.statBonuses?.[key]) || 0;
+    });
+    res[key] = score;
+  });
+  return res;
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 const HpBar: React.FC<{ current: number; max: number }> = ({ current, max }) => {
@@ -110,7 +136,15 @@ const StatBlock: React.FC<{ stats: Record<string, number>; color: string }> = ({
   </div>
 );
 
-// ── Player Panel (controlled HP) ──────────────────────────────────────────────
+// ── Shared panel layout skeleton ──────────────────────────────────────────────
+// Both panels use the same section order so HP bars sit at the same y-position:
+//   [header: name + badge]  ← min-h-[64px] ensures alignment
+//   [HpControl]
+//   [3-col combat stats]
+//   [StatBlock 6-col]
+//   [extra section — scrollable]
+
+// ── Player Panel ──────────────────────────────────────────────────────────────
 
 interface PlayerPanelProps {
   character: Character;
@@ -120,27 +154,31 @@ interface PlayerPanelProps {
 }
 
 const PlayerPanel: React.FC<PlayerPanelProps> = ({ character, hp, maxHp, onHpChange }) => {
-  const stats: Record<string, number> = {
-    str: character.stats.str.score, dex: character.stats.dex.score,
-    con: character.stats.con.score, int: character.stats.int.score,
-    wis: character.stats.wis.score, cha: character.stats.cha.score,
-  };
+  // Use effective stats (base + racial + ASI + magic items) same as CharacterSheet
+  const stats = computeEffectiveStats(character);
 
   return (
-    <div className="bg-dragon-900/60 border border-dragon-600 rounded-xl p-4 flex flex-col gap-4 h-full">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-dragon-gold font-fantasy text-xl leading-tight">{character.name || 'Nhân vật'}</h2>
-          <p className="text-gray-400 text-xs mt-0.5">{character.className || '—'} · Lv {character.level} · {character.race || '—'}</p>
+    <div className="bg-dragon-900/60 border border-dragon-600 rounded-xl p-4 flex flex-col gap-3 h-full">
+
+      {/* ① Header — fixed height to align with monster header */}
+      <div className="flex items-start justify-between min-h-[56px]">
+        <div className="min-w-0 mr-2">
+          <h2 className="text-dragon-gold font-fantasy text-xl leading-tight truncate">{character.name || 'Nhân vật'}</h2>
+          <p className="text-gray-400 text-xs mt-0.5 leading-snug">
+            {character.className || '—'} · Lv {character.level}
+            {character.race ? ` · ${character.race}` : ''}
+          </p>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] text-gray-500 uppercase">Proficiency</div>
-          <div className="text-dragon-gold font-bold font-mono">+{character.proficiencyBonus}</div>
+        <div className="text-right shrink-0">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider">Proficiency</div>
+          <div className="text-dragon-gold font-bold font-mono text-lg leading-none mt-0.5">+{character.proficiencyBonus}</div>
         </div>
       </div>
 
+      {/* ② HP — aligned with monster HP */}
       <HpControl label="Hit Points" current={hp} max={maxHp} onChange={onHpChange} onReset={() => onHpChange(maxHp)} />
 
+      {/* ③ Combat stats — same 3-col grid as monster */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-black/30 rounded-lg p-2 text-center">
           <div className="text-[9px] text-gray-500 uppercase flex items-center justify-center gap-1 mb-0.5"><Shield size={9} /> AC</div>
@@ -156,14 +194,16 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ character, hp, maxHp, onHpCha
         </div>
       </div>
 
+      {/* ④ Stats — same 6-col grid */}
       <StatBlock stats={stats} color="text-dragon-gold" />
 
+      {/* ⑤ Extra: weapons / attacks */}
       {(character.weapons.length > 0 || character.attacks.length > 0) && (
-        <div>
-          <div className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 tracking-wider flex items-center gap-1">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 tracking-wider flex items-center gap-1 shrink-0">
             <Swords size={10} /> Tấn công
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 overflow-y-auto custom-scrollbar">
             {character.weapons.map((w, i) => (
               <div key={i} className="flex items-center justify-between text-xs bg-black/20 rounded px-2 py-1">
                 <span className="text-gray-200 truncate mr-2">{w.customName || w.weaponId}</span>
@@ -181,7 +221,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ character, hp, maxHp, onHpCha
       )}
 
       {hp === 0 && (
-        <div className="bg-red-950/60 border border-red-800 rounded-lg p-2 text-center">
+        <div className="bg-red-950/60 border border-red-800 rounded-lg p-2 text-center shrink-0">
           <span className="text-red-400 text-xs font-bold animate-pulse">💀 HP = 0 — Death Saving Throws!</span>
         </div>
       )}
@@ -189,7 +229,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ character, hp, maxHp, onHpCha
   );
 };
 
-// ── Monster Panel — stats only, no search ────────────────────────────────────
+// ── Monster Panel ─────────────────────────────────────────────────────────────
 
 interface MonsterPanelProps {
   selected: Monster | null;
@@ -200,89 +240,145 @@ interface MonsterPanelProps {
 
 const MonsterPanel: React.FC<MonsterPanelProps> = ({ selected, hp, maxHp, onHpChange }) => {
   return (
-    <div className="bg-[#1a1014]/80 border border-red-900/60 rounded-xl p-4 flex flex-col gap-4 h-full">
-      <div className="flex items-center gap-2">
-        <Skull size={16} className="text-red-500" />
-        <h2 className="text-red-400 font-fantasy text-xl">Quái Vật</h2>
-      </div>
+    <div className="bg-[#1a1014]/80 border border-red-900/60 rounded-xl p-4 flex flex-col gap-3 h-full">
 
-      {/* Monster Stats */}
       {selected ? (
-        <div className="space-y-3">
-          <div className="border-b border-red-900/50 pb-2">
-            <h3 className="text-red-400 font-fantasy text-lg">{selected.name}</h3>
-            <p className="text-gray-500 text-xs italic">{selected.size} {selected.type}, {selected.alignment}</p>
+        <>
+          {/* ① Header — same min-h as player header */}
+          <div className="flex items-start justify-between min-h-[56px]">
+            <div className="min-w-0 mr-2">
+              <h3 className="text-red-400 font-fantasy text-xl leading-tight truncate">{selected.name}</h3>
+              <p className="text-gray-500 text-xs italic mt-0.5 leading-snug">{selected.size} {selected.type}, {selected.alignment}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <div className={`text-[10px] uppercase font-bold tracking-wider ${getCRColor(selected.challenge)}`}>CR</div>
+              <div className={`font-bold font-mono text-lg leading-none mt-0.5 ${getCRColor(selected.challenge)}`}>
+                {selected.challenge.split(' ')[0]}
+              </div>
+            </div>
           </div>
 
+          {/* ② HP — aligned with player HP */}
           <HpControl label="Hit Points" current={hp} max={maxHp} onChange={onHpChange} onReset={() => onHpChange(maxHp)} />
 
+          {/* ③ Combat stats — same 3-col grid */}
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-black/30 rounded-lg p-2 text-center">
               <div className="text-[9px] text-gray-500 uppercase flex items-center justify-center gap-1 mb-0.5"><Shield size={9} /> AC</div>
-              <div className="text-white font-bold text-lg font-mono">{selected.ac}</div>
+              <div className="text-white font-bold text-lg font-mono">{selected.ac.match(/^(\d+)/)?.[1] ?? selected.ac}</div>
             </div>
             <div className="bg-black/30 rounded-lg p-2 text-center">
-              <div className={`text-[9px] uppercase flex items-center justify-center gap-1 mb-0.5 font-bold ${getCRColor(selected.challenge)}`}>CR</div>
-              <div className={`font-bold text-lg font-mono ${getCRColor(selected.challenge)}`}>{selected.challenge.split(' ')[0]}</div>
+              <div className="text-[9px] text-gray-500 uppercase flex items-center justify-center gap-1 mb-0.5"><Zap size={9} /> Init</div>
+              <div className="text-white font-bold text-lg font-mono">
+                {(() => { const m = Math.floor((selected.stats.dex - 10) / 2); return (m >= 0 ? '+' : '') + m; })()}
+              </div>
             </div>
             <div className="bg-black/30 rounded-lg p-2 text-center">
               <div className="text-[9px] text-gray-500 uppercase flex items-center justify-center gap-1 mb-0.5"><Activity size={9} /> Speed</div>
-              <div className="text-white font-bold text-sm font-mono">{selected.speed.replace(' ft', '')}</div>
+              <div className="text-white font-bold text-sm font-mono leading-tight">{selected.speed.replace(' ft', '')}</div>
             </div>
           </div>
 
+          {/* ④ Stats — same 6-col grid */}
           <StatBlock stats={selected.stats} color="text-red-400" />
 
-          <div className="space-y-0.5 text-xs">
-            {selected.saves && <div><span className="text-red-400 font-bold">Saves:</span> <span className="text-gray-300">{selected.saves}</span></div>}
-            {selected.skills && <div><span className="text-red-400 font-bold">Skills:</span> <span className="text-gray-300">{selected.skills}</span></div>}
-            <div><span className="text-red-400 font-bold">Senses:</span> <span className="text-gray-300">{selected.senses}</span></div>
+          {/* ⑤ Extra: saves / senses / traits / actions — scrollable */}
+          <div className="flex-1 flex flex-col min-h-0 space-y-2 overflow-y-auto custom-scrollbar">
+            {(selected.saves || selected.skills) && (
+              <div className="space-y-0.5 text-xs shrink-0">
+                {selected.saves && <div><span className="text-red-400 font-bold">Saves:</span> <span className="text-gray-300">{selected.saves}</span></div>}
+                {selected.skills && <div><span className="text-red-400 font-bold">Skills:</span> <span className="text-gray-300">{selected.skills}</span></div>}
+              </div>
+            )}
+            <div className="text-xs shrink-0">
+              <span className="text-red-400 font-bold">Senses:</span> <span className="text-gray-300">{selected.senses}</span>
+            </div>
+
+            {selected.traits.length > 0 && (
+              <div className="space-y-1 shrink-0">
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Đặc điểm</div>
+                {selected.traits.map((t, i) => (
+                  <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
+                    <span className="font-bold text-white italic">{t.name}.</span> {t.desc}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selected.actions.length > 0 && (
+              <div className="space-y-1 shrink-0">
+                <div className="text-[10px] text-red-400 uppercase font-bold tracking-wider border-t border-red-900/40 pt-2">Hành động</div>
+                {selected.actions.map((a, i) => (
+                  <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
+                    <span className="font-bold text-white italic">{a.name}.</span> {a.desc}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selected.legendaryActions && selected.legendaryActions.length > 0 && (
+              <div className="space-y-1 shrink-0">
+                <div className="text-[10px] text-yellow-500 uppercase font-bold tracking-wider border-t border-yellow-900/40 pt-2">Hành động huyền thoại</div>
+                {selected.legendaryActions.map((a, i) => (
+                  <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
+                    <span className="font-bold text-white italic">{a.name}.</span> {a.desc}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {selected.traits.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Đặc điểm</div>
-              {selected.traits.map((t, i) => (
-                <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
-                  <span className="font-bold text-white italic">{t.name}.</span> {t.desc}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selected.actions.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[10px] text-red-400 uppercase font-bold tracking-wider border-t border-red-900/40 pt-2">Hành động</div>
-              {selected.actions.map((a, i) => (
-                <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
-                  <span className="font-bold text-white italic">{a.name}.</span> {a.desc}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selected.legendaryActions && selected.legendaryActions.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[10px] text-yellow-500 uppercase font-bold tracking-wider border-t border-yellow-900/40 pt-2">Hành động huyền thoại</div>
-              {selected.legendaryActions.map((a, i) => (
-                <div key={i} className="text-xs text-gray-300 bg-black/20 rounded px-2 py-1">
-                  <span className="font-bold text-white italic">{a.name}.</span> {a.desc}
-                </div>
-              ))}
-            </div>
-          )}
-
           {hp === 0 && (
-            <div className="bg-gray-900/80 border border-gray-700 rounded-lg p-2 text-center">
+            <div className="bg-gray-900/80 border border-gray-700 rounded-lg p-2 text-center shrink-0">
               <span className="text-gray-400 text-xs font-bold">💀 Quái vật đã bị hạ gục!</span>
             </div>
           )}
-        </div>
+        </>
       ) : (
-        <div className="flex flex-col items-center justify-center py-10 text-gray-600 space-y-2">
-          <Skull size={40} className="opacity-20" />
-          <p className="text-xs">Chọn quái vật từ danh sách để bắt đầu</p>
-        </div>
+        <>
+          {/* Placeholder — same header height so layout is consistent */}
+          <div className="flex items-center gap-2 min-h-[56px]">
+            <Skull size={18} className="text-red-800 shrink-0" />
+            <div>
+              <div className="text-red-800 font-fantasy text-xl leading-tight">Quái Vật</div>
+              <div className="text-gray-700 text-xs mt-0.5">Chưa chọn</div>
+            </div>
+          </div>
+          {/* Placeholder HP bar area */}
+          <div className="space-y-1.5 opacity-20 pointer-events-none">
+            <div className="flex items-center justify-between text-[10px] text-gray-600 mb-1">
+              <span className="font-bold uppercase tracking-wider flex items-center gap-1"><Heart size={10} /> Hit Points</span>
+            </div>
+            <div className="w-full h-2.5 bg-black/40 rounded-full" />
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-7 h-7 rounded-lg bg-red-900/20" />
+              <div className="flex-1 text-center text-lg font-bold font-mono text-gray-700">— / —</div>
+              <div className="w-7 h-7 rounded-lg bg-green-900/20" />
+            </div>
+          </div>
+          {/* Placeholder combat stats */}
+          <div className="grid grid-cols-3 gap-2 opacity-20">
+            {['AC','Init','Speed'].map(label => (
+              <div key={label} className="bg-black/30 rounded-lg p-2 text-center">
+                <div className="text-[9px] text-gray-600 uppercase mb-0.5">{label}</div>
+                <div className="text-gray-700 font-bold text-lg font-mono">—</div>
+              </div>
+            ))}
+          </div>
+          {/* Placeholder stats */}
+          <div className="grid grid-cols-6 gap-1 opacity-20">
+            {ABILITY_KEYS.map(k => (
+              <div key={k} className="bg-black/20 rounded-lg py-1.5 text-center">
+                <div className="text-[9px] text-gray-700 uppercase">{k}</div>
+                <div className="text-gray-700 font-bold text-sm">—</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center py-4 text-gray-600 gap-2">
+            <Skull size={36} className="opacity-10" />
+            <p className="text-xs">Chọn quái vật từ danh sách để bắt đầu</p>
+          </div>
+        </>
       )}
     </div>
   );
@@ -298,7 +394,6 @@ const Arena: React.FC<Props> = ({ character }) => {
   const [monsterHp, setMonsterHp] = useState(0);
   const [monsterMaxHp, setMonsterMaxHp] = useState(0);
 
-  // Sync when character profile changes
   useEffect(() => {
     setPlayerHp(character.hp.current);
   }, [character.name, character.hp.current]);
@@ -313,7 +408,7 @@ const Arena: React.FC<Props> = ({ character }) => {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       {/* VS Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:items-start">
         <PlayerPanel
           character={character}
           hp={playerHp}

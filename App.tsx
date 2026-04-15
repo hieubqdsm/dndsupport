@@ -687,9 +687,9 @@ const App: React.FC = () => {
         <div style={{ display: currentView === 'encounter' ? 'block' : 'none' }}>
           <EncounterTracker profiles={profiles} />
         </div>
-        {currentView === 'arena' && (
+        <div style={{ display: currentView === 'arena' ? 'block' : 'none' }}>
           <Arena character={character} />
-        )}
+        </div>
       </main>
 
       {/* Persistent Dice Button for Mobile */}
