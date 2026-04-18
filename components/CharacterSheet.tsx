@@ -7,7 +7,7 @@ import { SPELL_DATABASE } from '../data/spells';
 import { FEAT_DATABASE } from '../data/feats';
 import { getSpellSlots } from '../data/spellSlots';
 import { getActiveFeatures, ClassFeature } from '../data/classFeatures';
-import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown, CheckCircle, Circle, Star, Gem } from 'lucide-react';
+import { Shield, Heart, Zap, Sword, Activity, User, Sparkles, Plus, Trash2, Info, ChevronDown, ChevronUp, CheckCircle, Circle, Star, Gem } from 'lucide-react';
 import { MagicItem } from '../types';
 
 interface Props {
@@ -57,7 +57,7 @@ const InfoTooltip: React.FC<{ content: string; alignRight?: boolean }> = ({ cont
     <>
       <button
         type="button"
-        className="text-dragon-gold hover:text-white transition-colors cursor-help align-middle inline-flex items-center justify-center"
+        className="text-dragon-gold hover:text-white transition-colors cursor-default align-middle inline-flex items-center justify-center"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsVisible(false)}
         onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
@@ -103,7 +103,7 @@ const BadgeTooltip: React.FC<{ tooltip: string; className: string; children: Rea
   return (
     <>
       <span
-        className={`${className} cursor-help`}
+        className={`${className} cursor-default`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsVisible(false)}
         onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
@@ -186,8 +186,11 @@ const SelectWithInfo: React.FC<{
 const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   const [activeTab, setActiveTab] = React.useState<TabType>('combat');
   const [editingASI, setEditingASI] = useState<string | null>(null);
+  const [showHpBreakdown, setShowHpBreakdown] = useState(false);
   const [showWeaponMenu, setShowWeaponMenu] = useState(false);
+  const [weaponSearch, setWeaponSearch] = useState('');
   const [showEquipMenu, setShowEquipMenu] = useState(false);
+  const [equipSearch, setEquipSearch] = useState('');
   const [openSpellLevel, setOpenSpellLevel] = useState<number | null>(null);
   const [spellSearch, setSpellSearch] = useState('');
 
@@ -215,8 +218,9 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
       score += Number(character.racialBonuses?.[key]) || 0;
 
       if (character.asiChoices) {
-        Object.values(character.asiChoices).forEach((choice: any) => {
-          if (choice.type === 'asi') {
+        Object.entries(character.asiChoices).forEach(([lvlKey, choice]: [string, any]) => {
+          if (parseInt(lvlKey) > character.level) return; // bỏ ASI của level cao hơn hiện tại
+          if (choice?.type === 'asi') {
             if (choice.ability1 === key) score += Number(choice.amount1) || 0;
             if (choice.ability2 === key) score += Number(choice.amount2) || 0;
           }
@@ -232,6 +236,24 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
   })();
   const filteredSubclasses = SUBCLASSES_VN.filter(s => s.className === character.className);
   const currentArmor = ARMOR_VN.find(a => a.value === character.armorWorn);
+
+  // --- Tính HP tối đa tự động ---
+  const hpClassData = CLASSES_VN.find(c => c.value === character.className);
+  const hpDieValue = hpClassData?.hitDie ? parseInt(hpClassData.hitDie.substring(1)) : 8;
+  const hpConMod = effectiveStats.con.modifier;
+  const hpMagicBonus = activeMagicItemBonuses['maxHp'] || 0;
+  const hpBonusFlat = character.hpBonusFlat ?? 0;
+  const hpLevelRolls = character.hpLevelRolls ?? [];
+  // rolls[i]: lv1 = max die (fixed), lv2+ = user input (0 if not set)
+  const hpRollsNorm = Array.from({ length: character.level }, (_, i) =>
+    i === 0 ? hpDieValue : (hpLevelRolls[i] ?? 0)
+  );
+  const calculatedMaxHp = Math.max(1,
+    hpRollsNorm.reduce((s, r) => s + r, 0)
+    + character.level * hpConMod
+    + hpBonusFlat
+    + hpMagicBonus
+  );
 
   // Auto-calculate AC based on armor, shield, and class features
   const calculateAC = (): number => {
@@ -333,21 +355,11 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
         }));
       }
 
-      // 3. Cập nhật Hit Dice & HP Max (Gợi ý)
+      // 3. Cập nhật Hit Dice (HP max tự tính qua calculatedMaxHp)
       if (classData.hitDie) {
-        const dieValue = parseInt(classData.hitDie.substring(1)); // Lấy số từ "d10" -> 10
-        const conMod = effectiveStats.con.modifier;
-
-        // Level 1: Max Die + Con Mod
-        // Level > 1: Giả sử lấy trung bình (Die/2 + 1) + Con Mod cho mỗi level thêm
-        // Nhưng để đơn giản và tránh ghi đè dữ liệu người chơi đã chỉnh, ta chỉ set lại nếu đang ở Level 1 hoặc HP = 0
-        if (character.level === 1 || character.hp.max === 0) {
-          const newMaxHP = dieValue + conMod;
-          newChar.hp = { ...character.hp, max: newMaxHP, current: newMaxHP };
-        }
-
-        // Luôn cập nhật loại Hit Dice
         newChar.hitDice = `${character.level}${classData.hitDie}`;
+        // Reset hpLevelRolls về lv1 khi đổi class (lv1 luôn = max die, auto)
+        newChar.hpLevelRolls = Array.from({ length: character.level }, (_, i) => i === 0 ? parseInt(classData.hitDie.substring(1)) : 0);
       }
     }
 
@@ -481,6 +493,13 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
     handleUpdate('weapons', [...character.weapons, calculated]);
   };
 
+  // Sync hp.max với calculatedMaxHp
+  useEffect(() => {
+    if (calculatedMaxHp !== character.hp.max) {
+      handleUpdate('hp.max', calculatedMaxHp);
+    }
+  }, [calculatedMaxHp]);
+
   // Recalculate all weapons khi stats thay đổi
   useEffect(() => {
     if (character.weapons.length === 0) return;
@@ -573,7 +592,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
             <div className="border-b border-dragon-700 pb-1">
               <div className="flex items-center gap-1">
                 <label className="text-[9px] uppercase font-bold text-gray-500">Kinh nghiệm (XP)</label>
-                <BadgeTooltip tooltip={`XP cần để lên level:\n\nLv 2: 300\nLv 3: 900\nLv 4: 2,700\nLv 5: 6,500\nLv 6: 14,000\nLv 7: 23,000\nLv 8: 34,000\nLv 9: 48,000\nLv 10: 64,000\nLv 11: 85,000\nLv 12: 100,000\nLv 13: 120,000\nLv 14: 140,000\nLv 15: 165,000\nLv 16: 195,000\nLv 17: 225,000\nLv 18: 265,000\nLv 19: 305,000\nLv 20: 355,000`} className="text-gray-600 hover:text-dragon-gold cursor-help">
+                <BadgeTooltip tooltip={`XP cần để lên level:\n\nLv 2: 300\nLv 3: 900\nLv 4: 2,700\nLv 5: 6,500\nLv 6: 14,000\nLv 7: 23,000\nLv 8: 34,000\nLv 9: 48,000\nLv 10: 64,000\nLv 11: 85,000\nLv 12: 100,000\nLv 13: 120,000\nLv 14: 140,000\nLv 15: 165,000\nLv 16: 195,000\nLv 17: 225,000\nLv 18: 265,000\nLv 19: 305,000\nLv 20: 355,000`} className="text-gray-600 hover:text-dragon-gold cursor-default">
                   <Info size={9} />
                 </BadgeTooltip>
               </div>
@@ -1175,45 +1194,85 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
               </div>
 
               <div className="bg-dragon-900 border border-dragon-600 rounded-xl p-5 shadow-inner">
+                {/* Header: Max HP + toggle */}
                 <div className="flex justify-between items-center mb-3 text-[10px] font-bold text-gray-500 uppercase">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
                     <span>Số máu tối đa:</span>
-                    <input
-                      type="number"
-                      className="bg-transparent w-10 text-white ml-1 border-b border-dragon-700 focus:outline-none focus:border-dragon-gold"
-                      value={character.hp.max}
-                      onChange={(e) => handleUpdate('hp.max', parseInt(e.target.value) || 0)}
-                    />
-                    <InfoTooltip content="Hit Points (HP): Sức chịu đựng sát thương. Level 1 = Max Hit Die + Con Mod. Level 2+: Roll Hit Die + CON mod (hoặc lấy trung bình)." />
+                    <span className="text-white font-bold text-sm">{calculatedMaxHp}</span>
+                    <InfoTooltip content="HP tối đa được tính tự động: tổng roll từng level + CON mod × level + bonus cố định + magic items." />
+                    <button
+                      onClick={() => setShowHpBreakdown(v => !v)}
+                      className="text-dragon-gold/60 hover:text-dragon-gold transition-colors ml-1"
+                      title="Xem chi tiết / chỉnh roll"
+                    >
+                      {showHpBreakdown ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
                   </div>
                   <span className="text-red-500 flex items-center gap-1 uppercase tracking-wider"><Heart size={14} /> Máu hiện tại</span>
                 </div>
 
-                {/* HP Level Up Info */}
-                {(() => {
-                  const classData = CLASSES_VN.find(c => c.value === character.className);
-                  const hitDie = classData?.hitDie;
-                  if (!hitDie) return null;
-                  const dieValue = parseInt(hitDie.substring(1));
-                  const conMod = effectiveStats.con.modifier;
-                  const avgRoll = Math.floor(dieValue / 2) + 1;
-                  const avgGain = Math.max(1, avgRoll + conMod);
-
-                  return (
-                    <div className="mb-3 bg-dragon-800/60 border border-dragon-700 rounded-lg p-2 px-3">
-                      <div className="flex items-center justify-between text-[10px] text-gray-400">
-                        <span>
-                          <span className="text-dragon-gold font-bold">🎲 Level Up:</span>
-                          {' '}Roll {hitDie} {conMod >= 0 ? '+' : ''} {conMod} (CON)
-                        </span>
-                        <span className="text-gray-500">
-                          TB: <span className="text-green-400 font-bold">+{avgGain}</span>
-                          {' | '}Lv1: <span className="text-blue-400 font-bold">{dieValue + conMod}</span>
-                        </span>
-                      </div>
+                {/* Collapsible HP breakdown */}
+                {showHpBreakdown && (
+                  <div className="mb-3 bg-dragon-800/60 border border-dragon-700 rounded-lg p-3 space-y-1.5">
+                    <div className="text-[9px] font-bold text-gray-500 uppercase mb-2 flex justify-between">
+                      <span>Chi tiết HP từng level</span>
+                      <span className="text-gray-600">Roll + CON ({hpConMod >= 0 ? '+' : ''}{hpConMod}) = cộng vào HP</span>
                     </div>
-                  );
-                })()}
+                    {hpRollsNorm.map((roll, i) => {
+                      const lvl = i + 1;
+                      const isLv1 = i === 0;
+                      const gain = roll + hpConMod;
+                      return (
+                        <div key={lvl} className="flex items-center gap-2 text-xs">
+                          <span className="text-gray-500 w-8 shrink-0 text-right">Lv{lvl}</span>
+                          {isLv1 ? (
+                            <span className="bg-dragon-700/40 border border-dragon-700 rounded px-2 py-0.5 text-blue-300 font-bold w-12 text-center">{hpDieValue}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              max={hpDieValue}
+                              value={hpLevelRolls[i] ?? ''}
+                              placeholder="?"
+                              onChange={(e) => {
+                                const val = Math.min(hpDieValue, Math.max(1, parseInt(e.target.value) || 1));
+                                const next = [...(character.hpLevelRolls ?? [])];
+                                next[i] = val;
+                                handleUpdate('hpLevelRolls', next);
+                              }}
+                              className="w-12 bg-dragon-700/40 border border-dragon-600 rounded px-2 py-0.5 text-center text-white font-bold focus:outline-none focus:border-dragon-gold"
+                            />
+                          )}
+                          <span className="text-gray-600 text-[10px]">
+                            {isLv1 ? '(max dice, cố định)' : `(1–${hpDieValue})`}
+                          </span>
+                          <span className="text-gray-500 text-[10px] ml-auto">
+                            = <span className={gain > 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>+{gain}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* Flat bonus */}
+                    <div className="flex items-center gap-2 text-xs border-t border-dragon-700 pt-1.5 mt-1.5">
+                      <span className="text-gray-500 shrink-0">Bonus cố định</span>
+                      <input
+                        type="number"
+                        value={hpBonusFlat}
+                        onChange={(e) => handleUpdate('hpBonusFlat', parseInt(e.target.value) || 0)}
+                        className="w-14 bg-dragon-700/40 border border-dragon-600 rounded px-2 py-0.5 text-center text-purple-300 font-bold focus:outline-none focus:border-dragon-gold"
+                      />
+                      <span className="text-gray-600 text-[10px]">race / misc / feat</span>
+                      {hpMagicBonus !== 0 && (
+                        <span className="ml-auto text-[10px] text-purple-400">Magic items: +{hpMagicBonus}</span>
+                      )}
+                    </div>
+                    {/* Summary */}
+                    <div className="text-[10px] text-right text-gray-500 border-t border-dragon-700 pt-1 mt-1">
+                      Tổng: <span className="text-white font-bold">{calculatedMaxHp} HP</span>
+                    </div>
+                  </div>
+                )}
+
                 <input
                   type="number"
                   className="w-full bg-dragon-800 border-2 border-dragon-700 text-center text-4xl font-fantasy font-bold py-2 rounded-lg text-white focus:border-red-500 outline-none"
@@ -1284,44 +1343,52 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
                     {showWeaponMenu && (
                       <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowWeaponMenu(false)}></div>
-                        <div className="absolute right-0 top-full mt-1 w-64 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-80 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
-                          {/* Simple Melee */}
-                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Simple Melee</div>
-                          {WEAPON_DATABASE.filter(w => w.category === 'Simple' && w.type === 'Melee').map(w => (
-                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
-                              <span className="font-medium">{w.label}</span>
-                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
-                              <span className="text-gray-600 ml-1">{w.cost}</span>
-                            </button>
-                          ))}
-                          {/* Simple Ranged */}
-                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Simple Ranged</div>
-                          {WEAPON_DATABASE.filter(w => w.category === 'Simple' && w.type === 'Ranged').map(w => (
-                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
-                              <span className="font-medium">{w.label}</span>
-                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
-                              <span className="text-gray-600 ml-1">{w.cost}</span>
-                            </button>
-                          ))}
-                          {/* Martial Melee */}
-                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Martial Melee</div>
-                          {WEAPON_DATABASE.filter(w => w.category === 'Martial' && w.type === 'Melee').map(w => (
-                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
-                              <span className="font-medium">{w.label}</span>
-                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
-                              <span className="text-gray-600 ml-1">{w.cost}</span>
-                            </button>
-                          ))}
-                          {/* Martial Ranged */}
-                          <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">Martial Ranged</div>
-                          {WEAPON_DATABASE.filter(w => w.category === 'Martial' && w.type === 'Ranged').map(w => (
-                            <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); }}>
-                              <span className="font-medium">{w.label}</span>
-                              <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
-                              <span className="text-gray-600 ml-1">{w.cost}</span>
-                            </button>
-                          ))}
+                        <div className="fixed inset-0 z-40" onClick={() => { setShowWeaponMenu(false); setWeaponSearch(''); }}></div>
+                        <div className="absolute right-0 top-full mt-1 w-72 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-96 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
+                          {/* Search */}
+                          <div className="sticky top-0 bg-dragon-900 px-2 pt-2 pb-1 border-b border-dragon-700 z-10">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Tìm vũ khí..."
+                              value={weaponSearch}
+                              onChange={e => setWeaponSearch(e.target.value)}
+                              className="w-full bg-dragon-800 text-xs text-white placeholder-gray-500 px-2 py-1.5 rounded border border-dragon-700 focus:outline-none focus:border-dragon-gold"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </div>
+                          {(() => {
+                            const q = weaponSearch.toLowerCase();
+                            const filtered = WEAPON_DATABASE.filter(w => !q || w.label.toLowerCase().includes(q));
+                            if (filtered.length === 0) return <div className="px-3 py-3 text-xs text-gray-500 text-center">Không tìm thấy vũ khí</div>;
+                            if (q) {
+                              return filtered.map(w => (
+                                <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); setWeaponSearch(''); }}>
+                                  <span className="font-medium">{w.label}</span>
+                                  <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                                  <span className="text-gray-600 ml-1 text-[10px]">[{w.category} {w.type}]</span>
+                                </button>
+                              ));
+                            }
+                            const groups: { label: string; cat: string; type: string }[] = [
+                              { label: 'Simple Melee', cat: 'Simple', type: 'Melee' },
+                              { label: 'Simple Ranged', cat: 'Simple', type: 'Ranged' },
+                              { label: 'Martial Melee', cat: 'Martial', type: 'Melee' },
+                              { label: 'Martial Ranged', cat: 'Martial', type: 'Ranged' },
+                            ];
+                            return groups.map(g => (
+                              <div key={g.label}>
+                                <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-[38px]">{g.label}</div>
+                                {WEAPON_DATABASE.filter(w => w.category === g.cat && w.type === g.type).map(w => (
+                                  <button key={w.value} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => { addWeapon(w.value); setShowWeaponMenu(false); setWeaponSearch(''); }}>
+                                    <span className="font-medium">{w.label}</span>
+                                    <span className="text-gray-500 ml-1">{w.damageDice} {w.damageType}</span>
+                                    <span className="text-gray-600 ml-1">{w.cost}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ));
+                          })()}
                         </div>
                       </>
                     )}
@@ -1404,6 +1471,14 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                               🎯 {wd.rangeNormal}/{wd.rangeLong} ft.
                             </BadgeTooltip>
                           )}
+                        </div>
+
+                        {/* Row 2b: Mastery & Properties notes */}
+                        <div className="text-[9px] text-gray-500 leading-relaxed space-y-0.5">
+                          <div><span className="text-purple-400 font-semibold">⚔ {wd.mastery}:</span> {MASTERY_INFO[wd.mastery] || wd.mastery}</div>
+                          {wd.properties.map(p => PROPERTY_INFO[p] && (
+                            <div key={p}><span className="text-gray-400 font-semibold">{p}:</span> {PROPERTY_INFO[p]}</div>
+                          ))}
                         </div>
 
                         {/* Row 3: Controls */}
@@ -1554,39 +1629,54 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                     </button>
                     {showEquipMenu && (
                       <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowEquipMenu(false)}></div>
-                        <div className="absolute left-0 bottom-full mb-1 w-64 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-72 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
-                          {(['Potion', 'Gear', 'Tool', 'Ammo', 'Container', 'Camp'] as const).map(cat => {
-                            const items = EQUIPMENT_DATABASE.filter(e => e.category === cat);
+                        <div className="fixed inset-0 z-40" onClick={() => { setShowEquipMenu(false); setEquipSearch(''); }}></div>
+                        <div className="absolute left-0 bottom-full mb-1 w-72 bg-dragon-900 border border-dragon-700 rounded shadow-xl max-h-96 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-100">
+                          {/* Search */}
+                          <div className="sticky top-0 bg-dragon-900 px-2 pt-2 pb-1 border-b border-dragon-700 z-10">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Tìm vật phẩm..."
+                              value={equipSearch}
+                              onChange={e => setEquipSearch(e.target.value)}
+                              className="w-full bg-dragon-800 text-xs text-white placeholder-gray-500 px-2 py-1.5 rounded border border-dragon-700 focus:outline-none focus:border-dragon-gold"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </div>
+                          {(() => {
+                            const q = equipSearch.toLowerCase();
                             const catLabels: Record<string, string> = { Potion: '🧴 Thuốc & Bình', Gear: '⚙️ Dụng cụ phiêu lưu', Tool: '🛠 Bộ công cụ', Ammo: '🎯 Đạn dược', Container: '🎒 Túi & Hộp', Camp: '⛺ Cắm trại' };
+                            const addItem = (label: string) => { handleUpdate('equipment', [...character.equipment, { name: label, amount: 1 }]); setShowEquipMenu(false); setEquipSearch(''); };
+                            if (q) {
+                              const filtered = EQUIPMENT_DATABASE.filter(e => e.label.toLowerCase().includes(q));
+                              if (filtered.length === 0) return <div className="px-3 py-3 text-xs text-gray-500 text-center">Không tìm thấy vật phẩm</div>;
+                              return filtered.map(eq => (
+                                <button key={eq.name} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => addItem(eq.label)}>
+                                  <span className="font-medium">{eq.label}</span>
+                                  <span className="text-gray-600 ml-1.5">{eq.cost}</span>
+                                  <span className="text-gray-600 ml-1 text-[10px]">[{catLabels[eq.category]}]</span>
+                                </button>
+                              ));
+                            }
                             return (
-                              <div key={cat}>
-                                <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-0">{catLabels[cat]}</div>
-                                {items.map(eq => (
-                                  <button
-                                    key={eq.name}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50"
-                                    onClick={() => {
-                                      handleUpdate('equipment', [...character.equipment, { name: eq.label, amount: 1 }]);
-                                      setShowEquipMenu(false);
-                                    }}
-                                  >
-                                    <span className="font-medium">{eq.label}</span>
-                                    <span className="text-gray-600 ml-1.5">{eq.cost}</span>
-                                  </button>
+                              <>
+                                {(['Potion', 'Gear', 'Tool', 'Ammo', 'Container', 'Camp'] as const).map(cat => (
+                                  <div key={cat}>
+                                    <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase bg-dragon-800 sticky top-[38px]">{catLabels[cat]}</div>
+                                    {EQUIPMENT_DATABASE.filter(e => e.category === cat).map(eq => (
+                                      <button key={eq.name} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-dragon-800 hover:text-white border-b border-dragon-800/50" onClick={() => addItem(eq.label)}>
+                                        <span className="font-medium">{eq.label}</span>
+                                        <span className="text-gray-600 ml-1.5">{eq.cost}</span>
+                                      </button>
+                                    ))}
+                                  </div>
                                 ))}
-                              </div>
+                                <button className="w-full text-left px-3 py-2 text-xs text-dragon-gold hover:bg-dragon-800 border-t border-dragon-700 font-bold" onClick={() => addItem('Vật phẩm mới')}>
+                                  Tùy chỉnh...
+                                </button>
+                              </>
                             );
-                          })}
-                          <button
-                            className="w-full text-left px-3 py-2 text-xs text-dragon-gold hover:bg-dragon-800 border-t border-dragon-700 font-bold"
-                            onClick={() => {
-                              handleUpdate('equipment', [...character.equipment, { name: 'Vật phẩm mới', amount: 1 }]);
-                              setShowEquipMenu(false);
-                            }}
-                          >
-                            Tùy chỉnh...
-                          </button>
+                          })()}
                         </div>
                       </>
                     )}
@@ -1827,9 +1917,9 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
 
               {/* Active Feats (from ASI choices) */}
               {(() => {
-                const activeFeatsId = Object.values(character.asiChoices || {})
-                  .filter((c: any) => c.type === 'feat' && c.featName)
-                  .map((c: any) => c.featName as string);
+                const activeFeatsId = Object.entries(character.asiChoices || {})
+                  .filter(([lvlKey, c]: [string, any]) => parseInt(lvlKey) <= character.level && c.type === 'feat' && c.featName)
+                  .map(([, c]: [string, any]) => c.featName as string);
 
                 if (activeFeatsId.length === 0) return null;
 
@@ -1959,41 +2049,6 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                 ) : null;
               })()}
 
-              {/* Personality Traits */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                  <h3 className="text-dragon-gold font-fantasy text-sm mb-2 uppercase tracking-wider">Tính cách (Personality)</h3>
-                  <textarea
-                    className="w-full bg-transparent text-xs text-gray-300 min-h-[60px] focus:outline-none border-b border-dragon-800 focus:border-dragon-gold/30"
-                    value={character.personality}
-                    onChange={(e) => handleUpdate('personality', e.target.value)}
-                  />
-                </div>
-                <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                  <h3 className="text-dragon-gold font-fantasy text-sm mb-2 uppercase tracking-wider">Lý tưởng (Ideals)</h3>
-                  <textarea
-                    className="w-full bg-transparent text-xs text-gray-300 min-h-[60px] focus:outline-none border-b border-dragon-800 focus:border-dragon-gold/30"
-                    value={character.ideals}
-                    onChange={(e) => handleUpdate('ideals', e.target.value)}
-                  />
-                </div>
-                <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                  <h3 className="text-dragon-gold font-fantasy text-sm mb-2 uppercase tracking-wider">Ràng buộc (Bonds)</h3>
-                  <textarea
-                    className="w-full bg-transparent text-xs text-gray-300 min-h-[60px] focus:outline-none border-b border-dragon-800 focus:border-dragon-gold/30"
-                    value={character.bonds}
-                    onChange={(e) => handleUpdate('bonds', e.target.value)}
-                  />
-                </div>
-                <div className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-4">
-                  <h3 className="text-dragon-gold font-fantasy text-sm mb-2 uppercase tracking-wider">Điểm yếu (Flaws)</h3>
-                  <textarea
-                    className="w-full bg-transparent text-xs text-gray-300 min-h-[60px] focus:outline-none border-b border-dragon-800 focus:border-dragon-gold/30"
-                    value={character.flaws}
-                    onChange={(e) => handleUpdate('flaws', e.target.value)}
-                  />
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -2026,6 +2081,24 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   onChange={(e) => handleUpdate('appearanceDesc', e.target.value)}
                   placeholder="Mô tả ngoại hình..."
                 />
+              </div>
+              {/* Tính cách, Lý tưởng, Ràng buộc, Điểm yếu */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Tính cách (Personality)', path: 'personality' },
+                  { label: 'Lý tưởng (Ideals)', path: 'ideals' },
+                  { label: 'Ràng buộc (Bonds)', path: 'bonds' },
+                  { label: 'Điểm yếu (Flaws)', path: 'flaws' },
+                ].map(f => (
+                  <div key={f.path} className="bg-dragon-900/40 border border-dragon-700 rounded-xl p-3 text-left">
+                    <h3 className="text-dragon-gold font-fantasy text-[10px] mb-1.5 uppercase tracking-wider">{f.label}</h3>
+                    <textarea
+                      className="w-full bg-transparent text-xs text-gray-300 min-h-[60px] focus:outline-none border-b border-dragon-800 focus:border-dragon-gold/30"
+                      value={(character as any)[f.path]}
+                      onChange={(e) => handleUpdate(f.path, e.target.value)}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -2077,7 +2150,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center relative">
                     <div className="flex items-center justify-center gap-1">
                       <label className="text-[10px] font-bold text-dragon-gold uppercase">Khả năng dùng phép</label>
-                      <BadgeTooltip tooltip={`Chỉ số năng lực dùng để cast phép, phụ thuộc vào class:\n\nWizard → INT (Trí tuệ)\nCleric / Druid / Ranger → WIS (Minh triết)\nBard / Sorcerer / Warlock / Paladin → CHA (Sức hút)\n\nChỉ số này ảnh hưởng đến Spell DC và Spell Attack.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                      <BadgeTooltip tooltip={`Chỉ số năng lực dùng để cast phép, phụ thuộc vào class:\n\nWizard → INT (Trí tuệ)\nCleric / Druid / Ranger → WIS (Minh triết)\nBard / Sorcerer / Warlock / Paladin → CHA (Sức hút)\n\nChỉ số này ảnh hưởng đến Spell DC và Spell Attack.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-default">
                         <Info size={10} />
                       </BadgeTooltip>
                     </div>
@@ -2090,7 +2163,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <label className="text-[10px] font-bold text-dragon-gold uppercase">DC Tránh đòn phép</label>
-                      <BadgeTooltip tooltip={`Khi bạn cast phép buộc mục tiêu save (VD: Fireball → DEX save), mục tiêu cần roll đạt >= DC này.\n\nCông thức: 8 + Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= ${spellSaveDC}\n\nDC càng cao → phép càng khó tránh.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                      <BadgeTooltip tooltip={`Khi bạn cast phép buộc mục tiêu save (VD: Fireball → DEX save), mục tiêu cần roll đạt >= DC này.\n\nCông thức: 8 + Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= ${spellSaveDC}\n\nDC càng cao → phép càng khó tránh.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-default">
                         <Info size={10} />
                       </BadgeTooltip>
                     </div>
@@ -2102,7 +2175,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                   <div className="bg-dragon-900 border-2 border-dragon-gold/20 rounded-xl p-4 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <label className="text-[10px] font-bold text-dragon-gold uppercase">Hỗ trợ tấn công phép</label>
-                      <BadgeTooltip tooltip={`Khi cast phép cần roll to hit (VD: Fire Bolt, Guiding Bolt), cộng bonus này vào d20.\n\nCông thức: Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= +${spellAttackBonus}\n\nSo sánh với AC kẻ thù để xem trúng hay không.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-help">
+                      <BadgeTooltip tooltip={`Khi cast phép cần roll to hit (VD: Fire Bolt, Guiding Bolt), cộng bonus này vào d20.\n\nCông thức: Proficiency (${character.proficiencyBonus}) + ${spellAbilityLabel} mod (${abilityMod >= 0 ? '+' : ''}${abilityMod})\n= +${spellAttackBonus}\n\nSo sánh với AC kẻ thù để xem trúng hay không.`} className="text-dragon-gold/50 hover:text-dragon-gold cursor-default">
                         <Info size={10} />
                       </BadgeTooltip>
                     </div>
@@ -2125,7 +2198,7 @@ const CharacterSheet: React.FC<Props> = ({ character, updateCharacter }) => {
                       <div className="bg-dragon-gold text-black w-6 h-6 rounded flex items-center justify-center font-bold text-xs">{lvl.level}</div>
                       <BadgeTooltip
                         tooltip={lvl.level === 0 ? 'Phép cơ bản — dùng không giới hạn, không tốn ô phép (Spell Slot)' : `Phép cấp ${lvl.level} — cần ${lvl.level >= 6 ? 'ô phép cấp cao' : 'ô phép'} để sử dụng`}
-                        className="font-fantasy text-sm text-dragon-gold uppercase cursor-help"
+                        className="font-fantasy text-sm text-dragon-gold uppercase cursor-default"
                       >
                         {lvl.level === 0 ? 'Phép cơ bản' : `Cấp ${lvl.level}`}
                       </BadgeTooltip>

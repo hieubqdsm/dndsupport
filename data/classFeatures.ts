@@ -183,7 +183,7 @@ export const FIGHTER_FEATURES: ClassFeature[] = [
     // Battle Master
     {
         name: 'Combat Superiority', label: 'Ưu Thế Chiến Đấu', level: 3, source: 'subclass', subclass: 'Battle Master', actionType: 'Special', dice: '4d8 → 5d8(Lv7) → 6d10(Lv15)', usesPerRest: 'Short Rest',
-        description: 'Có Superiority Dice (d8, lên d10 Lv10). Short Rest hồi lại. Dùng cho Maneuvers:\n• Trip Attack: +die damage, mục tiêu STR save hoặc Prone\n• Riposte: Reaction khi miss → attack + die damage\n• Precision: Thêm die vào attack roll\n• Menacing: +die damage, WIS save hoặc Frightened\n• Rally: Bonus Action → đồng minh +die Temp HP\n• Disarming: +die damage, STR save hoặc rơi vũ khí\n• Goading: +die damage, Disadvantage attack ai khác\n• Pushing: +die damage, đẩy 15ft'
+        description: 'Có Superiority Dice (d8, lên d10 Lv10). Short Rest hồi lại. Dùng cho Maneuvers:\n• Trip Attack: +dice damage, mục tiêu STR save hoặc Prone\n• Riposte: Reaction khi miss → attack + dice damage\n• Precision: Thêm dice vào attack roll\n• Menacing: +dice damage, WIS save hoặc Frightened\n• Rally: Bonus Action → đồng minh +dice Temp HP\n• Disarming: +dice damage, STR save hoặc rơi vũ khí\n• Goading: +dice damage, Disadvantage attack ai khác\n• Pushing: +dice damage, đẩy 15ft'
     },
     {
         name: 'Student of War', label: 'Học Trò Chiến Tranh', level: 3, source: 'subclass', subclass: 'Battle Master', actionType: 'Passive',
@@ -191,7 +191,7 @@ export const FIGHTER_FEATURES: ClassFeature[] = [
     },
     {
         name: 'Relentless', label: 'Không Ngừng Nghỉ', level: 15, source: 'subclass', subclass: 'Battle Master', actionType: 'Passive',
-        description: 'Khi Initiative roll mà hết Superiority Dice → nhận lại 1 die.'
+        description: 'Khi Initiative roll mà hết Superiority Dice → nhận lại 1 dice.'
     },
 
     // Eldritch Knight
@@ -211,7 +211,7 @@ export const FIGHTER_FEATURES: ClassFeature[] = [
     // Psi Warrior
     {
         name: 'Psionic Power', label: 'Năng Lượng Tâm Linh', level: 3, source: 'subclass', subclass: 'Psi Warrior', actionType: 'Special', dice: '2d6 → 2d8(Lv5) → 2d10(Lv11) → 2d12(Lv17)', usesPerRest: 'PB dice/Long Rest',
-        description: 'Có Psionic Energy Dice (số = PB × 2). Dùng cho:\n• Protective Field: Reaction → giảm damage đồng minh = 1 die + INT mod\n• Psionic Strike: +1 die Force damage khi hit\n• Telekinetic Movement: di chuyển 1 vật/creature lên đến 30ft (Action)'
+        description: 'Có Psionic Energy Dice (số = PB × 2). Dùng cho:\n• Protective Field: Reaction → giảm damage đồng minh = 1 dice + INT mod\n• Psionic Strike: +1 dice Force damage khi hit\n• Telekinetic Movement: di chuyển 1 vật/creature lên đến 30ft (Action)'
     },
     {
         name: 'Telekinetic Adept', label: 'Bậc Thầy Dịch Chuyển', level: 7, source: 'subclass', subclass: 'Psi Warrior', actionType: 'Special',
@@ -477,7 +477,7 @@ export const PALADIN_FEATURES: ClassFeature[] = [
 export const BARD_FEATURES: ClassFeature[] = [
     {
         name: 'Bardic Inspiration', label: 'Cảm Hứng Thi Sĩ', level: 1, source: 'class', actionType: 'Bonus Action', usesPerRest: 'CHA mod/Long Rest (PB ở Lv5)', dice: '1d6 → d8(5) → d10(10) → d12(15)',
-        description: 'Bonus Action: cho 1 creature trong 60ft 1 Inspiration die. Trong 10 phút, creature cộng die vào 1 ability check, attack roll, hoặc saving throw.'
+        description: 'Bonus Action: cho 1 creature trong 60ft 1 Inspiration Dice. Trong 10 phút, creature cộng dice vào 1 ability check, attack roll, hoặc saving throw.'
     },
     {
         name: 'Jack of All Trades', label: 'Vạn Nghệ', level: 2, source: 'class', actionType: 'Passive',
@@ -494,8 +494,8 @@ export const BARD_FEATURES: ClassFeature[] = [
 
     // Lore
     {
-        name: 'Cutting Words', label: 'Lời Chê Bai', level: 3, source: 'subclass', subclass: 'Lore', actionType: 'Reaction', dice: 'Bardic die',
-        description: 'Reaction khi creature trong 60ft roll attack, ability check, hoặc damage: trừ 1 Bardic Inspiration die từ roll đó.'
+        name: 'Cutting Words', label: 'Lời Chê Bai', level: 3, source: 'subclass', subclass: 'Lore', actionType: 'Reaction', dice: 'Bardic Dice',
+        description: 'Reaction khi creature trong 60ft roll attack, ability check, hoặc damage: trừ 1 Bardic Inspiration Dice từ roll đó.'
     },
     {
         name: 'Additional Magical Secrets', label: 'Bí Mật Ma Thuật Thêm', level: 6, source: 'subclass', subclass: 'Lore', actionType: 'Passive',
@@ -503,13 +503,13 @@ export const BARD_FEATURES: ClassFeature[] = [
     },
     {
         name: 'Peerless Skill', label: 'Kỹ Năng Vô Song', level: 14, source: 'subclass', subclass: 'Lore', actionType: 'Special',
-        description: 'Khi fail ability check → dùng 1 Bardic Inspiration die cộng vào roll (không tốn use).'
+        description: 'Khi fail ability check → dùng 1 Bardic Inspiration Dice cộng vào roll (không tốn use).'
     },
 
     // Valor
     {
         name: 'Combat Inspiration', label: 'Cảm Hứng Chiến Đấu', level: 3, source: 'subclass', subclass: 'Valor', actionType: 'Passive',
-        description: 'Bardic Inspiration die có thể cộng vào weapon damage roll hoặc AC (Reaction) chống 1 attack.'
+        description: 'Bardic Inspiration Dice có thể cộng vào weapon damage roll hoặc AC (Reaction) chống 1 attack.'
     },
     {
         name: 'Extra Attack (Valor)', label: 'Tấn Công Thêm', level: 6, source: 'subclass', subclass: 'Valor', actionType: 'Passive',
@@ -699,7 +699,7 @@ export const RANGER_FEATURES: ClassFeature[] = [
 export const MONK_FEATURES: ClassFeature[] = [
     {
         name: 'Martial Arts', label: 'Võ Thuật', level: 1, source: 'class', actionType: 'Passive', dice: '1d6 → d8(5) → d10(11) → d12(17)',
-        description: 'Khi dùng Unarmed Strike hoặc Monk weapon:\n• Dùng DEX thay STR cho attack/damage\n• Martial Arts die thay damage thường\n• Bonus Action: 1 Unarmed Strike thêm'
+        description: 'Khi dùng Unarmed Strike hoặc Monk weapon:\n• Dùng DEX thay STR cho attack/damage\n• Martial Arts Dice thay damage thường\n• Bonus Action: 1 Unarmed Strike thêm'
     },
     {
         name: 'Unarmored Defense', label: 'Phòng Thủ Không Giáp', level: 1, source: 'class', actionType: 'Passive',
@@ -776,12 +776,12 @@ export const MONK_FEATURES: ClassFeature[] = [
 
     // Way of Mercy
     {
-        name: 'Hand of Healing', label: 'Bàn Tay Chữa Lành', level: 3, source: 'subclass', subclass: 'Mercy', actionType: 'Action', dice: '1 Martial Arts die + WIS', usesPerRest: '1 Ki/use',
-        description: 'Tiêu 1 Ki: chạm creature → heal 1 Martial Arts die + WIS mod. Hoặc thay 1 Flurry of Blows attack bằng heal.'
+        name: 'Hand of Healing', label: 'Bàn Tay Chữa Lành', level: 3, source: 'subclass', subclass: 'Mercy', actionType: 'Action', dice: '1 Martial Arts Dice + WIS', usesPerRest: '1 Ki/use',
+        description: 'Tiêu 1 Ki: chạm creature → heal 1 Martial Arts Dice + WIS mod. Hoặc thay 1 Flurry of Blows attack bằng heal.'
     },
     {
-        name: 'Hand of Harm', label: 'Bàn Tay Gây Hại', level: 3, source: 'subclass', subclass: 'Mercy', actionType: 'Special', dice: '1 Martial Arts die + WIS Necrotic', usesPerRest: '1 Ki/use',
-        description: 'Khi hit Unarmed Strike: tiêu 1 Ki → +1 Martial Arts die + WIS mod Necrotic damage. Mục tiêu Poisoned cho đến end of your next turn.'
+        name: 'Hand of Harm', label: 'Bàn Tay Gây Hại', level: 3, source: 'subclass', subclass: 'Mercy', actionType: 'Special', dice: '1 Martial Arts Dice + WIS Necrotic', usesPerRest: '1 Ki/use',
+        description: 'Khi hit Unarmed Strike: tiêu 1 Ki → +1 Martial Arts Dice + WIS mod Necrotic damage. Mục tiêu Poisoned cho đến end of your next turn.'
     },
     {
         name: 'Physician\'s Touch', label: 'Tay Thầy Thuốc', level: 6, source: 'subclass', subclass: 'Mercy', actionType: 'Passive',
@@ -946,7 +946,7 @@ export const WARLOCK_FEATURES: ClassFeature[] = [
 
     // Celestial Patron
     {
-        name: 'Healing Light', label: 'Ánh Sáng Chữa Lành', level: 1, source: 'subclass', subclass: 'Celestial', actionType: 'Bonus Action', dice: '1d6 per die', usesPerRest: '1+CHA mod d6 / Long Rest',
+        name: 'Healing Light', label: 'Ánh Sáng Chữa Lành', level: 1, source: 'subclass', subclass: 'Celestial', actionType: 'Bonus Action', dice: '1d6 per dice', usesPerRest: '1+CHA mod d6 / Long Rest',
         description: 'Bonus Action: heal 1 creature trong 60ft. Roll 1-5 d6 (pool = 1 + CHA mod dice). Hồi pool sau Long Rest.'
     },
     {

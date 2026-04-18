@@ -44,7 +44,11 @@ interface CombatRState {
   bonusAttackAvailable: boolean;
   bonusAttackUsed: boolean;
   isBonusAction: boolean;
-  resourcesInitialized: boolean; // true after first START; keeps per-rest resources from being re-evaluated
+  resourcesInitialized: boolean;
+  // Weapon mastery status
+  playerHasVex: boolean;    // Vex: advantage on next player attack
+  monsterHasSap: boolean;   // Sap: monster has disadvantage on next attack
+  monsterIsProne: boolean;  // Topple: player has advantage on next attack
 }
 
 interface PendingRollConfig {
@@ -56,6 +60,7 @@ interface PendingRollConfig {
   formula: string;
   damages?: DamageComponent[];
   isCrit?: boolean;
+  critRange?: number; // minimum d20 roll to trigger crit (default 20)
 }
 
 interface PendingChoiceConfig {
@@ -105,6 +110,48 @@ function rollCrit(formula: string): { total: number; desc: string } {
   const total = Math.max(1, r1.diceTotal + r2.diceTotal + r1.modifier);
   const modStr = r1.modifier !== 0 ? (r1.modifier>0 ? `+${r1.modifier}` : String(r1.modifier)) : '';
   return { total, desc:`[${r1.rolls.join('+')}]+[${r2.rolls.join('+')}]${modStr}=${total}` };
+}
+
+// ── Crit range (Champion Fighter) ─────────────────────────────────────────────
+function getCritRange(character: Character): number {
+  const cls = (character.className || '').toLowerCase();
+  const sub = (character.subclass || '').toLowerCase();
+  if (cls.includes('fighter') && sub.includes('champion')) {
+    if (character.level >= 15) return 18;
+    if (character.level >= 3)  return 19;
+  }
+  return 20;
+}
+
+// ── Weapon mastery helpers ─────────────────────────────────────────────────────
+function getPrimaryWeaponData(character: Character) {
+  if (character.weapons.length === 0) return null;
+  const best = character.weapons.reduce((b, w) => w.attackBonus > b.attackBonus ? w : b);
+  return WEAPON_DATABASE.find(d => d.value === best.weaponId) ?? null;
+}
+
+function getWeaponMastery(character: Character): string | null {
+  return getPrimaryWeaponData(character)?.mastery ?? null;
+}
+
+function getWeaponAbilityMod(character: Character): number {
+  const wd = getPrimaryWeaponData(character);
+  const strMod = getMod(character.stats.str.score);
+  const dexMod = getMod(character.stats.dex.score);
+  if (!wd) return strMod;
+  if (wd.properties.includes('Finesse')) return Math.max(strMod, dexMod);
+  if (wd.type === 'Ranged') return dexMod;
+  return strMod;
+}
+
+// ── Advantage / Disadvantage d20 roll ─────────────────────────────────────────
+function rollD20Adv(): { roll: number; desc: string } {
+  const r1 = rollD20(), r2 = rollD20();
+  return { roll: Math.max(r1, r2), desc: `(${r1},${r2})↑` };
+}
+function rollD20Dis(): { roll: number; desc: string } {
+  const r1 = rollD20(), r2 = rollD20();
+  return { roll: Math.min(r1, r2), desc: `(${r1},${r2})↓` };
 }
 
 function rollAllDamages(damages: DamageComponent[], isCrit: boolean): { total: number; desc: string } {
@@ -339,6 +386,7 @@ const INIT: CombatRState = {
   surgeAvailable:false, bonusAttackAvailable:false,
   bonusAttackUsed:false, isBonusAction:false,
   resourcesInitialized:false,
+  playerHasVex:false, monsterHasSap:false, monsterIsProne:false,
 };
 
 type CombatAction =
@@ -404,19 +452,51 @@ function combatStep(s: CombatRState, char: Character, mon: Monster, opts: { d20O
     const atk = s.isBonusAction ? (getBonusAttack(char) ?? getPrimaryAttack(char)) : getPrimaryAttack(char);
     const atkNum = s.isBonusAction ? 'Bonus' : s.playerAttacksTotal>1 ? `${s.playerAttacksTotal-s.playerAttacksRemaining+1}/${s.playerAttacksTotal}` : '';
     const suffix = atkNum ? ` (${atkNum})` : '';
-    const d20 = opts.d20Override ?? rollD20(), total = d20 + atk.bonus;
-    const hit = d20===20 || (d20!==1 && total>=monAC);
-    const note = d20===20?' ✨ BẠO KÍCH!':d20===1?' 💀 Thất bại!':'';
+    const critRange = getCritRange(char);
+    const hasAdv = !s.isBonusAction && (s.playerHasVex || s.monsterIsProne);
+
+    let d20: number, rollDesc: string;
+    if (opts.d20Override !== undefined) {
+      d20 = opts.d20Override; rollDesc = `${d20}`;
+    } else if (hasAdv) {
+      const r = rollD20Adv(); d20 = r.roll; rollDesc = r.desc;
+    } else {
+      d20 = rollD20(); rollDesc = `${d20}`;
+    }
+
+    const total = d20 + atk.bonus;
+    const isCritHit = d20 >= critRange;
+    const hit = isCritHit || (d20 !== 1 && total >= monAC);
+    const critLabel = critRange < 20 ? ` (${critRange}–20)` : '';
+    const note = isCritHit ? ` ✨ BẠO KÍCH!${critLabel}` : d20===1 ? ' 💀 Thất bại!' : '';
+    const advNote = hasAdv ? (s.playerHasVex ? ' [Vex↑]' : ' [Prone↑]') : '';
+
     const entry = mkLog(s.round,'player',hit?'attack_hit':'attack_miss',
-      `⚔️ ${char.name}${suffix} [${atk.name}]: d20(${d20})${fmtMod(atk.bonus)}=${total} vs AC ${monAC} — ${hit?'TRÚNG!':'Hụt!'}${note}`);
-    if (hit) return { ...s, phase:'player_damage', lastAttackRoll:d20, log:[...s.log,entry] };
-    return afterPlayerAttack(s, mon, [...s.log, entry]);
+      `⚔️ ${char.name}${suffix} [${atk.name}]${advNote}: d20${rollDesc}${fmtMod(atk.bonus)}=${total} vs AC ${monAC} — ${hit?'TRÚNG!':'Hụt!'}${note}`);
+
+    const clearedAdvState = { playerHasVex:false, monsterIsProne:false };
+
+    if (hit) return { ...s, ...clearedAdvState, phase:'player_damage', lastAttackRoll:d20, log:[...s.log,entry] };
+
+    // Graze mastery: miss still deals ability modifier damage
+    const mastery = !s.isBonusAction ? getWeaponMastery(char) : null;
+    if (mastery === 'Graze') {
+      const grazeAmt = Math.max(0, getWeaponAbilityMod(char));
+      const grazeEntry = mkLog(s.round,'player','damage',`⚔ Graze (sượt qua): ${grazeAmt} damage${grazeAmt===0?' (mod = 0)':''}`);
+      const newMHp = Math.max(0, s.monsterHp - grazeAmt);
+      if (newMHp <= 0) return { ...s, ...clearedAdvState, phase:'finished', winner:'player', monsterHp:0,
+        log:[...s.log, entry, grazeEntry, mkLog(s.round,'system','kill',`☠️ ${mon.name} bị hạ gục! ${char.name} chiến thắng!`)] };
+      return afterPlayerAttack({ ...s, ...clearedAdvState, monsterHp:newMHp }, mon, [...s.log, entry, grazeEntry]);
+    }
+
+    return afterPlayerAttack({ ...s, ...clearedAdvState }, mon, [...s.log, entry]);
   }
 
   // ─ Player Damage ─
   if (s.phase === 'player_damage') {
     const atk = s.isBonusAction ? (getBonusAttack(char) ?? getPrimaryAttack(char)) : getPrimaryAttack(char);
-    const isCrit = s.lastAttackRoll === 20;
+    const critRange = getCritRange(char);
+    const isCrit = s.lastAttackRoll !== null && s.lastAttackRoll >= critRange;
     let dmg: number, desc: string;
     if (opts.damageOverride !== undefined) {
       dmg = Math.max(1, opts.damageOverride);
@@ -427,10 +507,39 @@ function combatStep(s: CombatRState, char: Character, mon: Monster, opts: { d20O
     }
     const newHp = Math.max(0, s.monsterHp - dmg);
     const dmgEntry = mkLog(s.round,'player','damage',`💥 Sát thương: ${desc}${atk.damages.length===1 && atk.damages[0].damageType?' ('+atk.damages[0].damageType+')':''} = ${dmg}`);
-    if (newHp <= 0) return { ...s, phase:'finished', winner:'player', monsterHp:0,
-      log:[...s.log,dmgEntry,mkLog(s.round,'system','kill',`☠️ ${mon.name} bị hạ gục! ${char.name} chiến thắng!`)] };
+
+    // Apply mastery effects on hit
+    const mastery = !s.isBonusAction ? getWeaponMastery(char) : null;
+    const masteryLogs: CombatLogEntry[] = [];
+    let masteryState: Partial<CombatRState> = {};
+    if (mastery === 'Vex') {
+      masteryState = { playerHasVex: true };
+      masteryLogs.push(mkLog(s.round,'player','info','⚡ Vex: Có Advantage cho đòn tấn công kế tiếp!'));
+    } else if (mastery === 'Sap') {
+      masteryState = { monsterHasSap: true };
+      masteryLogs.push(mkLog(s.round,'player','info','😵 Sap: Quái vật có Disadvantage cho đòn tấn công kế tiếp!'));
+    } else if (mastery === 'Topple') {
+      const conMod = getMod(mon.stats.con);
+      const dc = 8 + atk.bonus;
+      const saveRoll = rollD20() + conMod;
+      if (saveRoll < dc) {
+        masteryState = { monsterIsProne: true };
+        masteryLogs.push(mkLog(s.round,'player','info',`🦵 Topple: CON save d20${fmtMod(conMod)}=${saveRoll} vs DC${dc} — Thất bại! Quái vật Prone → đòn kế có Advantage.`));
+      } else {
+        masteryLogs.push(mkLog(s.round,'player','info',`🦵 Topple: CON save d20${fmtMod(conMod)}=${saveRoll} vs DC${dc} — Thành công!`));
+      }
+    } else if (mastery === 'Push') {
+      masteryLogs.push(mkLog(s.round,'player','info','💨 Push: Quái vật bị đẩy lùi 10ft!'));
+    } else if (mastery === 'Slow') {
+      masteryLogs.push(mkLog(s.round,'player','info','🐢 Slow: Speed quái vật giảm 10ft đến đầu lượt kế!'));
+    } else if (mastery === 'Cleave') {
+      masteryLogs.push(mkLog(s.round,'player','info','⚔ Cleave: Có thể tấn công thêm 1 kẻ khác trong 5ft (không cộng ability modifier)!'));
+    }
+
+    if (newHp <= 0) return { ...s, ...masteryState, phase:'finished', winner:'player', monsterHp:0,
+      log:[...s.log, dmgEntry, ...masteryLogs, mkLog(s.round,'system','kill',`☠️ ${mon.name} bị hạ gục! ${char.name} chiến thắng!`)] };
     const hpEntry = mkLog(s.round,'monster','info',`💔 ${mon.name}: ${newHp} HP còn lại`);
-    return afterPlayerAttack({ ...s, monsterHp:newHp }, mon, [...s.log, dmgEntry, hpEntry]);
+    return afterPlayerAttack({ ...s, ...masteryState, monsterHp:newHp }, mon, [...s.log, dmgEntry, hpEntry, ...masteryLogs]);
   }
 
   // ─ Monster Attack ─
@@ -439,13 +548,26 @@ function combatStep(s: CombatRState, char: Character, mon: Monster, opts: { d20O
     const atkIdx = (s.monsterAttacksTotal - s.monsterAttacksRemaining) % attacks.length;
     const atk = attacks[atkIdx];
     const atkNum = s.monsterAttacksTotal>1 ? ` (${s.monsterAttacksTotal-s.monsterAttacksRemaining+1}/${s.monsterAttacksTotal})` : '';
-    const d20 = opts.d20Override ?? rollD20(), total = d20 + atk.bonus;
+
+    let d20: number, rollDesc: string;
+    if (opts.d20Override !== undefined) {
+      d20 = opts.d20Override; rollDesc = `${d20}`;
+    } else if (s.monsterHasSap) {
+      const r = rollD20Dis(); d20 = r.roll; rollDesc = r.desc;
+    } else {
+      d20 = rollD20(); rollDesc = `${d20}`;
+    }
+    const sapNote = s.monsterHasSap ? ' [Sap↓]' : '';
+
+    const total = d20 + atk.bonus;
     const hit = d20===20 || (d20!==1 && total>=char.ac);
     const note = d20===20?' ✨ BẠO KÍCH!':d20===1?' 💀 Thất bại!':'';
     const entry = mkLog(s.round,'monster',hit?'attack_hit':'attack_miss',
-      `🐉 ${mon.name}${atkNum} [${atk.name}]: d20(${d20})${fmtMod(atk.bonus)}=${total} vs AC ${char.ac} — ${hit?'TRÚNG!':'Hụt!'}${note}`);
-    if (hit) return { ...s, phase:'monster_damage', lastAttackRoll:d20, log:[...s.log,entry] };
-    return afterMonsterAttack(s, char, [...s.log, entry]);
+      `🐉 ${mon.name}${atkNum}${sapNote} [${atk.name}]: d20${rollDesc}${fmtMod(atk.bonus)}=${total} vs AC ${char.ac} — ${hit?'TRÚNG!':'Hụt!'}${note}`);
+
+    const clearedSap = { monsterHasSap: false };
+    if (hit) return { ...s, ...clearedSap, phase:'monster_damage', lastAttackRoll:d20, log:[...s.log,entry] };
+    return afterMonsterAttack({ ...s, ...clearedSap }, char, [...s.log, entry]);
   }
 
   // ─ Monster Damage ─
@@ -536,40 +658,95 @@ function combatReducer(s: CombatRState, a: CombatAction): CombatRState {
 
 // ── Roll Prompt ───────────────────────────────────────────────────────────────
 
+interface RolledResult {
+  d20?: number;           // for d20 rolls
+  components?: { formula: string; damageType: string; rolls: number[]; modifier: number; total: number }[];
+  total: number;
+}
+
+function doRollConfig(config: PendingRollConfig): RolledResult {
+  if (config.isD20) {
+    const d = rollD20();
+    return { d20: d, total: d + config.modifier };
+  }
+  if (config.damages && config.damages.length > 0) {
+    const components = config.damages.map(dmg => {
+      if (config.isCrit) {
+        const r1 = rollFormula(dmg.formula), r2 = rollFormula(dmg.formula);
+        const rolls = [...r1.rolls, ...r2.rolls];
+        const total = Math.max(1, r1.diceTotal + r2.diceTotal + r1.modifier);
+        return { formula: dmg.formula, damageType: dmg.damageType, rolls, modifier: r1.modifier, total };
+      }
+      const r = rollFormula(dmg.formula);
+      return { formula: dmg.formula, damageType: dmg.damageType, rolls: r.rolls, modifier: r.modifier, total: r.total };
+    });
+    return { components, total: components.reduce((s, c) => s + c.total, 0) };
+  }
+  const r = config.isCrit ? rollCrit(config.formula) : rollFormula(config.formula);
+  return { total: r.total };
+}
+
+const DieFace: React.FC<{ value: number; size?: 'sm' | 'lg'; color?: string }> = ({ value, size = 'sm', color = 'text-white' }) => {
+  const dim = size === 'lg' ? 'w-14 h-14 text-2xl' : 'w-8 h-8 text-sm';
+  return (
+    <div className={`${dim} ${color} font-black font-mono rounded-lg border-2 border-white/20 bg-black/40 flex items-center justify-center shadow-inner select-none`}>
+      {value}
+    </div>
+  );
+};
+
 const RollPrompt: React.FC<{
   config: PendingRollConfig;
   onConfirm: (rawValue: number) => void;
-}> = ({ config, onConfirm }) => {
-  const [diceInput, setDiceInput] = useState<number | null>(null);
+  testMode: boolean;
+}> = ({ config, onConfirm, testMode }) => {
+  const [result, setResult]     = useState<RolledResult | null>(null);
+  const [manualInput, setManualInput] = useState<string>('');
   const isPlayer  = config.actor === 'player';
-  const hasValue  = diceInput !== null;
-  const total     = hasValue ? (config.isD20 ? diceInput + config.modifier : diceInput) : null;
-  const isNat20   = config.isD20 && diceInput === 20;
-  const isNat1    = config.isD20 && diceInput === 1;
+  const critRange = config.critRange ?? 20;
+  const locked    = !testMode && result !== null;
 
-  const handleRandom = () => {
-    if (config.isD20) { setDiceInput(rollD20()); return; }
-    if (config.damages) { setDiceInput(rollAllDamages(config.damages, config.isCrit??false).total); return; }
-    const r = config.isCrit ? rollCrit(config.formula) : rollFormula(config.formula);
-    setDiceInput(r.total);
+  // For test mode, also allow manual input for d20
+  const effectiveD20 = config.isD20
+    ? (result?.d20 ?? (testMode && manualInput !== '' ? parseInt(manualInput) || null : null))
+    : null;
+  const total = result?.total ?? (testMode && config.isD20 && effectiveD20 !== null ? effectiveD20! + config.modifier : null);
+
+  const isNat20 = config.isD20 && effectiveD20 !== null && effectiveD20 >= critRange;
+  const isNat1  = config.isD20 && effectiveD20 === 1;
+  const hasValue = total !== null;
+
+  const handleRoll = () => {
+    const r = doRollConfig(config);
+    setResult(r);
+    if (config.isD20 && r.d20 !== undefined) setManualInput(String(r.d20));
   };
 
   const handleAutoConfirm = () => {
-    if (config.isD20) { onConfirm(rollD20()); return; }
-    if (config.damages) { onConfirm(rollAllDamages(config.damages, config.isCrit??false).total); return; }
-    const r = config.isCrit ? rollCrit(config.formula) : rollFormula(config.formula);
+    const r = doRollConfig(config);
     onConfirm(r.total);
   };
 
-  const handleInputChange = (raw: string) => {
+  const handleManualChange = (raw: string) => {
+    setManualInput(raw);
     const v = parseInt(raw);
-    if (isNaN(v) || raw === '') { setDiceInput(null); return; }
-    setDiceInput(config.isD20 ? Math.max(1, Math.min(20, v)) : Math.max(1, v));
+    if (!isNaN(v)) {
+      const clamped = config.isD20 ? Math.max(1, Math.min(20, v)) : Math.max(1, v);
+      setResult({ d20: config.isD20 ? clamped : undefined, total: config.isD20 ? clamped + config.modifier : clamped });
+    } else {
+      setResult(null);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (total !== null) onConfirm(config.isD20 ? (effectiveD20 ?? total) : total);
   };
 
   return (
     <div className={`rounded-xl border-2 p-4 animate-in slide-in-from-bottom-2 ${
       isPlayer ? 'border-cyan-600 bg-cyan-950/50' : 'border-red-600 bg-red-950/50'}`}>
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h3 className={`font-fantasy font-bold text-sm ${isPlayer ? 'text-cyan-300' : 'text-red-300'}`}>
           🎲 {config.title}
@@ -582,56 +759,118 @@ const RollPrompt: React.FC<{
       <p className="text-gray-400 text-[11px] mb-3">{config.context}</p>
       {config.isCrit && (
         <div className="text-dragon-gold text-[11px] font-bold mb-2 animate-pulse">
-          ✨ BẠO KÍCH!{!config.isD20 && config.formula ? ` Tung ${config.formula} × 2!` : ''}
+          ✨ BẠO KÍCH!{!config.isD20 && config.formula ? ` ${config.formula} × 2 dice!` : ''}
         </div>
       )}
 
-      {config.isD20 ? (
-        <div className="flex items-end gap-3 flex-wrap">
-          <div className="text-center">
-            <div className="text-[9px] text-gray-500 uppercase mb-1">d20</div>
-            <input type="number" value={diceInput ?? ''} min={1} max={20} placeholder="—"
-              onChange={e => handleInputChange(e.target.value)}
-              className={`w-16 text-center bg-black/40 text-3xl font-bold font-mono rounded-lg py-1.5 border focus:outline-none focus:ring-1 placeholder:text-gray-700 ${
-                !hasValue       ? 'border-gray-700 text-gray-700 focus:ring-gray-600' :
-                isNat20         ? 'text-dragon-gold border-dragon-gold focus:ring-dragon-gold' :
-                isNat1          ? 'text-red-400 border-red-600 focus:ring-red-500' :
-                                  'text-white border-gray-600 focus:ring-cyan-600'}`} />
-          </div>
-          {config.modifier !== 0 && (
-            <>
-              <div className="text-gray-500 text-xl font-bold pb-2">{config.modifier >= 0 ? `+${config.modifier}` : config.modifier}</div>
-              <div className="text-gray-500 text-xl font-bold pb-2">=</div>
+      {/* Dice display area */}
+      <div className="min-h-[64px] flex items-center justify-center mb-3">
+        {!result && !hasValue ? (
+          <div className="text-gray-600 text-xs italic">Chưa tung — nhấn nút bên dưới</div>
+        ) : config.isD20 ? (
+          /* D20 display */
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            {testMode ? (
               <div className="text-center">
-                <div className="text-[9px] text-gray-500 uppercase mb-1">Tổng</div>
-                <div className={`text-3xl font-bold font-mono px-3 py-1.5 rounded-lg bg-black/20 min-w-[3rem] ${
-                  !hasValue ? 'text-gray-700' : isNat20 ? 'text-dragon-gold' : isNat1 ? 'text-red-400' : 'text-white'}`}>
-                  {total ?? '—'}
-                </div>
+                <div className="text-[9px] text-gray-500 uppercase mb-1">d20</div>
+                <input type="number" value={manualInput} min={1} max={20} placeholder="—"
+                  onChange={e => handleManualChange(e.target.value)}
+                  className={`w-16 text-center bg-black/40 text-3xl font-bold font-mono rounded-lg py-1.5 border focus:outline-none focus:ring-1 placeholder:text-gray-700 ${
+                    !hasValue   ? 'border-gray-700 text-gray-700 focus:ring-gray-600' :
+                    isNat20     ? 'text-dragon-gold border-dragon-gold focus:ring-dragon-gold' :
+                    isNat1      ? 'text-red-400 border-red-600 focus:ring-red-500' :
+                                  'text-white border-gray-600 focus:ring-cyan-600'}`} />
               </div>
-            </>
-          )}
-          {isNat20 && <div className="text-dragon-gold text-xs font-black animate-pulse pb-2">Bạo kích!</div>}
-          {isNat1  && <div className="text-red-400 text-xs font-black pb-2">Thất bại!</div>}
-        </div>
-      ) : (
-        <div>
-          <div className="text-[9px] text-gray-500 uppercase mb-1">
-            Kết quả — {config.formula}{config.isCrit ? ' ×2' : ''}
+            ) : (
+              <DieFace value={effectiveD20!}
+                size="lg"
+                color={isNat20 ? 'text-dragon-gold' : isNat1 ? 'text-red-400' : 'text-white'} />
+            )}
+            {config.modifier !== 0 && (
+              <>
+                <div className="text-gray-500 text-xl font-bold">{config.modifier >= 0 ? `+${config.modifier}` : config.modifier}</div>
+                <div className="text-gray-500 text-xl font-bold">=</div>
+                <div className="text-center">
+                  <div className="text-[9px] text-gray-500 uppercase mb-1">Tổng</div>
+                  <div className={`text-3xl font-bold font-mono px-3 py-1.5 rounded-lg bg-black/20 min-w-[3rem] text-center ${
+                    isNat20 ? 'text-dragon-gold' : isNat1 ? 'text-red-400' : 'text-white'}`}>
+                    {total ?? '—'}
+                  </div>
+                </div>
+              </>
+            )}
+            {isNat20 && <div className="text-dragon-gold text-xs font-black animate-pulse">Bạo kích!</div>}
+            {isNat1  && <div className="text-red-400 text-xs font-black">Thất bại!</div>}
           </div>
-          <input type="number" value={diceInput ?? ''} min={1} placeholder="Nhập kết quả..."
-            onChange={e => handleInputChange(e.target.value)}
-            className="w-28 text-center bg-black/40 text-white text-3xl font-bold font-mono rounded-lg py-1.5 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-600 placeholder:text-gray-700 placeholder:text-base" />
-        </div>
-      )}
+        ) : result?.components ? (
+          /* Multi-component damage display */
+          <div className="space-y-2 w-full">
+            {result.components.map((comp, ci) => {
+              const isCritComp = config.isCrit && comp.rolls.length > 0;
+              const half = isCritComp ? Math.floor(comp.rolls.length / 2) : comp.rolls.length;
+              return (
+                <div key={ci} className="space-y-1 text-center">
+                  {result.components!.length > 1 && (
+                    <div className="text-[9px] text-gray-500 uppercase">{comp.formula} {comp.damageType}</div>
+                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                    {isCritComp ? (
+                      <>
+                        {comp.rolls.slice(0, half).map((v, i) => (
+                          <DieFace key={`a${i}`} value={v} color="text-dragon-gold" />
+                        ))}
+                        <span className="text-dragon-gold/60 text-xs font-bold">+</span>
+                        {comp.rolls.slice(half).map((v, i) => (
+                          <DieFace key={`b${i}`} value={v} color="text-dragon-gold/70" />
+                        ))}
+                      </>
+                    ) : (
+                      comp.rolls.map((v, i) => <DieFace key={i} value={v} />)
+                    )}
+                    {comp.modifier !== 0 && (
+                      <span className="text-gray-400 text-sm font-bold">
+                        {comp.modifier > 0 ? `+${comp.modifier}` : comp.modifier}
+                      </span>
+                    )}
+                    <span className="text-gray-500 text-sm">=</span>
+                    <span className="text-white font-bold text-lg">{comp.total}</span>
+                    {comp.damageType && result.components!.length > 1 && (
+                      <span className="text-gray-600 text-[10px]">({comp.damageType})</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {result.components.length > 1 && (
+              <div className="text-center text-xs text-gray-400 border-t border-white/10 pt-1">
+                Tổng: <span className="text-white font-bold text-base">{result.total}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Single formula damage */
+          <div className="text-center w-full">
+            <div className="text-[9px] text-gray-500 uppercase mb-2">
+              {config.formula}{config.isCrit ? ' ×2 dice' : ''}
+            </div>
+            <div className="text-white font-bold text-3xl font-mono">{result?.total ?? '—'}</div>
+          </div>
+        )}
+      </div>
 
-      <div className="flex gap-2 mt-4">
-        <button onClick={handleRandom}
-          className="flex-1 py-2 bg-black/30 border border-gray-700 text-gray-200 rounded-lg text-xs font-bold hover:border-gray-500 hover:bg-black/50 transition-colors flex items-center justify-center gap-1.5 active:scale-95">
-          <Dices size={13} /> Tung ngẫu nhiên
+      {/* Buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleRoll}
+          disabled={locked}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+            locked
+              ? 'bg-gray-900 border border-gray-800 text-gray-700 cursor-not-allowed'
+              : 'bg-black/30 border border-gray-700 text-gray-200 hover:border-gray-500 hover:bg-black/50'}`}>
+          <Dices size={13} /> Tung xúc xắc
         </button>
         <button
-          onClick={() => { if (hasValue && total !== null) onConfirm(config.isD20 ? diceInput! : total); }}
+          onClick={handleConfirm}
           disabled={!hasValue}
           className={`flex-1 py-2 rounded-lg text-sm font-black uppercase flex items-center justify-center gap-1 transition-all ${
             hasValue
@@ -686,11 +925,12 @@ function buildRollConfig(phase: CombatPhase, s: CombatRState, char: Character, m
       const atk = s.isBonusAction ? (getBonusAttack(char) ?? getPrimaryAttack(char)) : getPrimaryAttack(char);
       const atkNum = s.isBonusAction ? 'Bonus Action' : s.playerAttacksTotal>1 ? `${s.playerAttacksTotal-s.playerAttacksRemaining+1}/${s.playerAttacksTotal}` : '';
       const titleSuffix = atkNum ? ` (${atkNum})` : '';
-      return { actor:'player', title:`${char.name} tấn công${titleSuffix}`, context:`[${atk.name}] ${fmtMod(atk.bonus)} to hit — vs AC ${monAC}`, isD20:true, modifier:atk.bonus, formula:'' };
+      const critRange = getCritRange(char);
+      return { actor:'player', title:`${char.name} tấn công${titleSuffix}`, context:`[${atk.name}] ${fmtMod(atk.bonus)} to hit — vs AC ${monAC}`, isD20:true, modifier:atk.bonus, formula:'', critRange };
     }
     case 'player_damage': {
       const atk = s.isBonusAction ? (getBonusAttack(char) ?? getPrimaryAttack(char)) : getPrimaryAttack(char);
-      const isCrit = s.lastAttackRoll === 20;
+      const isCrit = s.lastAttackRoll !== null && s.lastAttackRoll >= getCritRange(char);
       const formulaStr = atk.damages.map(d => `${d.formula}${d.damageType?' '+d.damageType:''}`).join(' + ');
       return { actor:'player', title:`${char.name} gây sát thương`, context:`Formula: ${formulaStr}`, isD20:false, modifier:0, formula:formulaStr, damages:atk.damages, isCrit };
     }
@@ -737,6 +977,7 @@ const CombatSim: React.FC<CombatSimProps> = ({
 }) => {
   const [state, dispatch] = useReducer(combatReducer, INIT);
   const [gmMode, setGmMode]             = useState(false);
+  const [testMode, setTestMode]         = useState(false);
   const [pendingRoll, setPendingRoll]   = useState<PendingRollConfig | null>(null);
   const [pendingChoice, setPendingChoice] = useState<PendingChoiceConfig | null>(null);
   const [pendingRestRoll, setPendingRestRoll] = useState<PendingRollConfig | null>(null);
@@ -892,7 +1133,7 @@ const CombatSim: React.FC<CombatSimProps> = ({
     setPendingRestRoll({
       actor: 'player',
       title: `Short Rest — Hồi máu (${formula})`,
-      context: `Tung hit die để hồi HP. Con modifier: ${fmtMod(getEffectiveConMod(character))}`,
+      context: `Tung hit dice để hồi HP. Con modifier: ${fmtMod(getEffectiveConMod(character))}`,
       isD20: false,
       modifier: 0,
       formula,
@@ -935,15 +1176,24 @@ const CombatSim: React.FC<CombatSimProps> = ({
         <h2 className="text-dragon-gold font-fantasy text-lg flex items-center gap-2">
           <Swords className="w-5 h-5" /> GIẢI LẬP CHIẾN ĐẤU
         </h2>
-        <div className="flex items-center bg-black/40 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setGmMode(false)}
-            className={`px-3 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1 transition-all ${!gmMode ? 'bg-dragon-gold text-black' : 'text-gray-500 hover:text-white'}`}>
-            <Bot size={11} /> Tự Động
-          </button>
-          <button onClick={() => setGmMode(true)}
-            className={`px-3 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1 transition-all ${gmMode ? 'bg-dragon-gold text-black' : 'text-gray-500 hover:text-white'}`}>
-            <Eye size={11} /> GM Mode
-          </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Test Mode: cho phép roll lại và chỉnh số tùy thích">
+            <div className={`w-7 h-4 rounded-full transition-colors relative ${testMode ? 'bg-yellow-600' : 'bg-gray-700'}`}
+              onClick={() => setTestMode(v => !v)}>
+              <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${testMode ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className={`text-[10px] font-bold uppercase ${testMode ? 'text-yellow-400' : 'text-gray-600'}`}>Test</span>
+          </label>
+          <div className="flex items-center bg-black/40 rounded-lg p-0.5 gap-0.5">
+            <button onClick={() => setGmMode(false)}
+              className={`px-3 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1 transition-all ${!gmMode ? 'bg-dragon-gold text-black' : 'text-gray-500 hover:text-white'}`}>
+              <Bot size={11} /> Tự Động
+            </button>
+            <button onClick={() => setGmMode(true)}
+              className={`px-3 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1 transition-all ${gmMode ? 'bg-dragon-gold text-black' : 'text-gray-500 hover:text-white'}`}>
+              <Eye size={11} /> GM Mode
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1130,7 +1380,7 @@ const CombatSim: React.FC<CombatSimProps> = ({
       {/* Roll / Choice Prompts */}
       {(pendingRoll || pendingChoice) && (
         <div className="px-5 py-3 border-b border-dragon-800">
-          {pendingRoll && <RollPrompt config={pendingRoll} onConfirm={handleRollConfirm} />}
+          {pendingRoll && <RollPrompt config={pendingRoll} onConfirm={handleRollConfirm} testMode={testMode} />}
           {pendingChoice && (
             <ChoicePrompt
               config={pendingChoice}
@@ -1181,16 +1431,16 @@ const CombatSim: React.FC<CombatSimProps> = ({
             <div className="mt-3 space-y-3 animate-in slide-in-from-top-1">
               {/* Short Rest */}
               {pendingRestRoll ? (
-                <RollPrompt config={pendingRestRoll} onConfirm={handleRestRollConfirm} />
+                <RollPrompt config={pendingRestRoll} onConfirm={handleRestRollConfirm} testMode={testMode} />
               ) : (
                 <div className="rounded-lg border border-blue-800/60 bg-blue-950/30 p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <Moon size={13} className="text-blue-400" />
                     <span className="text-blue-300 text-xs font-bold">Short Rest</span>
-                    <span className="text-gray-600 text-[10px] ml-auto">Hit die: {getHitDieFormula(character)}</span>
+                    <span className="text-gray-600 text-[10px] ml-auto">Hit dice: {getHitDieFormula(character)}</span>
                   </div>
                   <p className="text-gray-500 text-[10px]">
-                    Tung hit die để hồi HP. Reset Action Surge &amp; Bonus Attack.
+                    Tung hit dice để hồi HP. Reset Action Surge &amp; Bonus Attack.
                   </p>
                   <button
                     onClick={handleShortRest}

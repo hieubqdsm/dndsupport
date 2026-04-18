@@ -44,9 +44,10 @@ function computeEffectiveStats(character: Character): Record<string, number> {
     let score = Number(character.stats[key as keyof typeof character.stats]?.score) || 10;
     // Racial bonuses
     score += Number(character.racialBonuses?.[key]) || 0;
-    // ASI choices
+    // ASI choices — chỉ tính các level <= level hiện tại
     if (character.asiChoices) {
-      Object.values(character.asiChoices).forEach((choice: any) => {
+      Object.entries(character.asiChoices).forEach(([lvlKey, choice]: [string, any]) => {
+        if (parseInt(lvlKey) > character.level) return;
         if (choice?.type === 'asi') {
           if (choice.ability1 === key) score += Number(choice.amount1) || 0;
           if (choice.ability2 === key) score += Number(choice.amount2) || 0;

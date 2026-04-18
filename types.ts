@@ -145,6 +145,8 @@ export interface Character {
   initiative: number;
   speed: number;
   hp: { current: number; max: number; temp: number };
+  hpLevelRolls: number[];  // roll tại từng level (index 0 = lv1 auto, 1+ = user)
+  hpBonusFlat: number;     // bonus cố định từ race/magic item/misc
   hitDice: string;
   deathSaves: { success: number; failure: number };
 
