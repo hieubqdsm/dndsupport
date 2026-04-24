@@ -204,11 +204,9 @@ const App: React.FC = () => {
 
   const isOnline = session?.mode === 'online' && isGoogleSheetEnabled();
 
-  // Filter profiles cho user hiện tại
+  // Hiện local profiles (không có userId) + profiles của user hiện tại
   const myProfiles = profiles.filter(p =>
-    !session || session.mode === 'local'
-      ? !p.userId  // local user thấy profiles không có userId
-      : p.userId === session.username
+    !p.userId || p.userId === session?.username
   );
 
   // Đăng nhập → sync từ sheet
@@ -310,14 +308,14 @@ const App: React.FC = () => {
 
   const activeProfile = myProfiles.find(p => p.id === activeProfileId);
 
-  const handleSaveAs = () => {
+  const handleSaveAs = (saveOnline = false) => {
     const name = saveAsName.trim() || character.name || 'Nhân vật mới';
     const newProfile: SavedProfile = {
       id: generateId(),
       name,
       character,
       updatedAt: new Date().toISOString(),
-      userId: session?.mode === 'online' ? session.username : undefined,
+      userId: saveOnline && isOnline && session ? session.username : undefined,
     };
     const updated = [...profiles, newProfile];
     setProfiles(updated);
@@ -541,7 +539,14 @@ const App: React.FC = () => {
                             className={`w-full px-4 py-2.5 flex items-center justify-between hover:bg-dragon-800 transition-colors text-left ${p.id === activeProfileId ? 'bg-dragon-800/60 border-l-2 border-dragon-gold' : ''}`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-semibold text-gray-200 truncate">{p.name}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-semibold text-gray-200 truncate">{p.name}</span>
+                                {p.userId ? (
+                                  <span className="text-[8px] font-bold text-green-500 border border-green-800 rounded px-1 shrink-0">Online</span>
+                                ) : (
+                                  <span className="text-[8px] font-bold text-gray-500 border border-dragon-700 rounded px-1 shrink-0">Local</span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-gray-500">
                                 {p.character?.className || '???'} Lv{p.character?.level ?? '?'} • {formatDate(p.updatedAt)}
                               </div>
@@ -649,31 +654,43 @@ const App: React.FC = () => {
               placeholder={character.name || 'Tên hồ sơ...'}
               value={saveAsName}
               onChange={(e) => setSaveAsName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSaveAs()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveAs(isOnline)}
               className="w-full bg-dragon-800 border border-dragon-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-dragon-gold mb-4"
               autoFocus
             />
             <div className="text-[10px] text-gray-500 mb-2">
               {character.className || '???'} Lv{character.level} • HP: {character.hp.current}/{character.hp.max}
             </div>
-            {isOnline && (
-              <div className="text-[10px] text-green-500 mb-4 flex items-center gap-1">
-                <Cloud size={10} /> Sẽ đồng bộ lên sheet của <strong>{session.username}</strong>
-              </div>
-            )}
             <div className="flex gap-2">
               <button
                 onClick={() => setShowSaveDialog(false)}
-                className="flex-1 px-4 py-2 text-xs font-bold text-gray-400 border border-dragon-700 rounded-lg hover:bg-dragon-800 transition-colors"
+                className="px-4 py-2 text-xs font-bold text-gray-400 border border-dragon-700 rounded-lg hover:bg-dragon-800 transition-colors"
               >
                 Hủy
               </button>
-              <button
-                onClick={handleSaveAs}
-                className="flex-1 px-4 py-2 text-xs font-bold text-black bg-dragon-gold rounded-lg hover:bg-yellow-400 transition-colors"
-              >
-                💾 Lưu
-              </button>
+              {isOnline ? (
+                <>
+                  <button
+                    onClick={() => handleSaveAs(false)}
+                    className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs font-bold text-gray-300 border border-dragon-600 rounded-lg hover:bg-dragon-800 transition-colors"
+                  >
+                    <WifiOff size={12} /> Local
+                  </button>
+                  <button
+                    onClick={() => handleSaveAs(true)}
+                    className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs font-bold text-black bg-dragon-gold rounded-lg hover:bg-yellow-400 transition-colors"
+                  >
+                    <Cloud size={12} /> Online
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleSaveAs(false)}
+                  className="flex-1 px-4 py-2 text-xs font-bold text-black bg-dragon-gold rounded-lg hover:bg-yellow-400 transition-colors"
+                >
+                  💾 Lưu
+                </button>
+              )}
             </div>
           </div>
         </div>
